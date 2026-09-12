@@ -145,8 +145,3 @@ Captured from a real local run: n8n `1.107.4` (Docker), the API, and the web UI,
 | `evidence/web-review-dashboard.png` | Review UI: 12 products analysed, PASS 2 / REVIEW 6 / BLOCK 4, 6 pending decisions. |
 
 The run used the unavailable provider (no LLM configuration), so weak-category fixtures resolved to `REVIEW` with `llm.status = FAILED`; routing is identical with a configured provider.
-
-Still to capture manually in an environment with a real LLM endpoint:
-
-1. One real configured-LLM review suggestion, shown with its before/after category in the UI.
-2. A short video (target maximum: 90 seconds) covering one PASS, one REVIEW, and one BLOCK execution plus one approve/reject action.
