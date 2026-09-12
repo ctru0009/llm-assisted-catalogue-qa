@@ -69,7 +69,7 @@ The intended flow is:
 Shopify-shaped webhook → explicit first-variant/product mapping → POST /analyse-product → PASS/REVIEW/BLOCK switch → labelled Set/no-op terminal
 ```
 
-n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The workflow's HTTP Request defaults to `http://127.0.0.1:3000/analyse-product`; set n8n's `CATALOGUE_API_URL` environment variable if the API has another reachable address. The intended npm commands are:
+n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The workflow uses the fixed local API URL `http://127.0.0.1:3000/analyse-product`; if the local network topology differs, align the workflow separately. The intended npm commands are:
 
 ```bash
 npm run validate:n8n   # intended root-script wiring: parse export and verify nodes/branches
@@ -88,7 +88,6 @@ See `.env.example` for safe, blank-by-default values.
 | `CORS_ORIGIN` | API | No | Defaults to `http://localhost:5173`. |
 | `VITE_API_URL` | Web | No | Defaults to `http://localhost:3000`; read by Vite at startup/build time. |
 | `N8N_WEBHOOK_URL` | Intended demo script | For demo | Must be the imported workflow's test/production webhook URL; the intended demo should fail clearly if absent. |
-| `CATALOGUE_API_URL` | n8n workflow | No | Workflow default is `http://127.0.0.1:3000/analyse-product`; override when n8n cannot reach that address. |
 | `LLM_API_KEY` | API | No | Together with the other two LLM fields, selects the provider. |
 | `LLM_BASE_URL` | API | No | OpenAI-compatible base URL; any blank LLM field makes the provider unavailable. |
 | `LLM_MODEL` | API | No | Model name; any blank LLM field makes the provider unavailable. |
@@ -106,12 +105,21 @@ For a configured provider, the adapter uses JSON-object mode, explicitly parses 
 Verified evaluation output from the current checkout:
 
 ```text
+> eval
+> tsx scripts/eval.ts
+
+LLM-assisted catalogue QA evaluation
 Fixtures:                    12
 Fixture expectations:        60/60
 Actual outcomes:             PASS 2 / REVIEW 6 / BLOCK 4
 LLM schema failure handling: PASS
 Prompt injection isolation:  PASS
 Unsafe state mutations:      0
+Publication safety:          architecture property only (publication state is not represented in Product model)
+Average fixture latency:      0.07 ms
+Fixture provider calls:       4
+All-scenario provider calls:  5
+Provider errors:               2
 Checks:                       65/65
 ```
 
@@ -133,4 +141,4 @@ Do not add an artifact link until it has been captured from a running n8n/API/LL
 4. For REVIEW, show the real model-backed suggestion and the human decision in the UI; include the before/after category only, never credentials or raw secret-bearing payloads.
 5. Record a short video (target maximum: 90 seconds) covering the same three outcomes and one approve/reject action.
 
-The structural n8n validator has been run successfully, but operational screenshots/video are not included because this checkout has not been run with n8n and a configured LLM endpoint. The real-model demo and n8n runtime evidence remain blocked until that environment is started and captured.
+The structural n8n validator in current HEAD has been run successfully against the 1.107.4 export. This is artifact validation only: operational screenshots/video are not included because this checkout has not been run with n8n and a configured LLM endpoint. The real-model demo and n8n runtime evidence remain blocked until that environment is started and captured.
