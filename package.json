@@ -1,0 +1,11 @@
+{
+  "name": "llm-assisted-catalogue-qa",
+  "private": true,
+  "workspaces": [
+    "api"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace api",
+    "test": "npm run test --workspace api"
+  }
+}
