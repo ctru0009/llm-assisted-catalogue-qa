@@ -16,6 +16,17 @@ type Workflow = {
   meta?: { n8nVersion?: string };
 };
 
+type SwitchRule = {
+  outputKey?: string;
+  conditions?: {
+    conditions?: Array<{
+      leftValue?: unknown;
+      rightValue?: unknown;
+      operator?: { type?: unknown; operation?: unknown };
+    }>;
+  };
+};
+
 const workflowPath = process.argv[2] ?? join(__dirname, "..", "n8n/catalogue-qa-workflow.json");
 
 function readWorkflow(path: string): Workflow {
@@ -63,6 +74,10 @@ function main(): void {
   const terminals = ["PASS", "REVIEW", "BLOCK"].map((status) =>
     exactlyOne(nodes, (node) => node.name === `Outcome ${status} (no-op)`, `${status} terminal`),
   );
+  assert.equal(mapper.type, "n8n-nodes-base.set", "Shopify mapper must be a Set node");
+  for (const terminal of terminals) {
+    assert.equal(terminal.type, "n8n-nodes-base.set", `${terminal.name} must be a Set node`);
+  }
 
   assert.equal(webhook.parameters?.httpMethod, "POST", "Webhook must accept POST");
   assert.equal(webhook.parameters?.responseMode, "lastNode", "Webhook must return the terminal output");
@@ -72,22 +87,31 @@ function main(): void {
 
   const mappingValue = String(assignment(mapper, "product").value);
   for (const requiredField of [
-    "$json.variants[0].sku",
-    "$json.variants[0].price",
-    "$json.variants[0].compare_at_price",
-    "$json.variants[0].inventory_quantity",
-    "$json.body_html",
-    "$json.product_type",
-    "$json.vendor",
-    "$json.images.map",
+    "$json.body.id",
+    "$json.body.title",
+    "$json.body.variants[0].sku",
+    "$json.body.variants[0].price",
+    "$json.body.variants[0].compare_at_price",
+    "$json.body.variants[0].inventory_quantity",
+    "$json.body.body_html",
+    "$json.body.product_type",
+    "$json.body.vendor",
+    "$json.body.images.map",
     "compareAtPrice",
   ]) {
     assert.match(mappingValue, new RegExp(requiredField.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `mapper must explicitly map ${requiredField}`);
   }
   assert.equal(assignment(mapper, "product").type, "object", "mapper must produce a product object");
 
-  const ruleValues = (statusSwitch.parameters?.rules as { values?: Array<{ outputKey?: string }> } | undefined)?.values ?? [];
+  const ruleValues = (statusSwitch.parameters?.rules as { values?: SwitchRule[] } | undefined)?.values ?? [];
   assert.deepEqual(ruleValues.map((rule) => rule.outputKey), ["PASS", "REVIEW", "BLOCK"], "Switch outputs must be PASS, REVIEW, BLOCK");
+  for (const [index, status] of ["PASS", "REVIEW", "BLOCK"].entries()) {
+    const conditions = ruleValues[index]?.conditions?.conditions ?? [];
+    assert.equal(conditions.length, 1, `${status} Switch rule must have one comparison`);
+    assert.equal(conditions[0]?.leftValue, "={{ $json.status }}", `${status} Switch rule must read $json.status`);
+    assert.equal(conditions[0]?.rightValue, status, `${status} Switch rule must compare its literal status`);
+    assert.deepEqual(conditions[0]?.operator, { type: "string", operation: "equals" }, `${status} Switch rule must use string equality`);
+  }
   assert.deepEqual(outgoing(workflow, statusSwitch.name, 0), [terminals[0]!.name], "PASS branch must terminate at PASS no-op");
   assert.deepEqual(outgoing(workflow, statusSwitch.name, 1), [terminals[1]!.name], "REVIEW branch must terminate at REVIEW no-op");
   assert.deepEqual(outgoing(workflow, statusSwitch.name, 2), [terminals[2]!.name], "BLOCK branch must terminate at BLOCK no-op");

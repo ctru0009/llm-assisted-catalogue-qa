@@ -26,7 +26,7 @@
             {
               "id": "catalogue-qa-product-mapping",
               "name": "product",
-              "value": "={{ { id: String($json.id), title: $json.title, sku: $json.variants[0].sku, price: Number($json.variants[0].price), ...($json.variants[0].compare_at_price === undefined || $json.variants[0].compare_at_price === '' ? {} : { compareAtPrice: Number($json.variants[0].compare_at_price) }), inventory: $json.variants[0].inventory_quantity, category: $json.product_type, vendorCategory: $json.vendor, description: $json.body_html, images: $json.images.map(image => image.src) } }}",
+              "value": "={{ { id: String($json.body.id), title: $json.body.title, sku: $json.body.variants[0].sku, price: Number($json.body.variants[0].price), ...($json.body.variants[0].compare_at_price === undefined || $json.body.variants[0].compare_at_price === '' ? {} : { compareAtPrice: Number($json.body.variants[0].compare_at_price) }), inventory: $json.body.variants[0].inventory_quantity, category: $json.body.product_type, vendorCategory: $json.body.vendor, description: $json.body.body_html, images: $json.body.images.map(image => image.src) } }}",
               "type": "object"
             }
           ]
@@ -46,7 +46,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.CATALOGUE_API_URL || 'http://127.0.0.1:3000/analyse-product' }}",
+        "url": "http://127.0.0.1:3000/analyse-product",
         "sendHeaders": false,
         "sendBody": true,
         "contentType": "json",
@@ -62,7 +62,7 @@
         760,
         300
       ],
-      "notes": "Defaults to http://127.0.0.1:3000/analyse-product. Set CATALOGUE_API_URL in n8n if the local API is exposed at another address.",
+      "notes": "Fixed local MVP endpoint: http://127.0.0.1:3000/analyse-product.",
       "notesInFlow": true
     },
     {
