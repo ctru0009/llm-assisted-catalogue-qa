@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import type { AllowedCategory } from "../llm/categories";
+import type { CategorySuggestion } from "../llm/schemas";
+
 export const ProductSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
@@ -23,31 +26,39 @@ export type CatalogueIssue = {
   message: string;
 };
 
-export type ProductAnalysis = {
+type AnalysisBase = {
   productId: string;
   status: "PASS" | "REVIEW" | "BLOCK";
   issues: CatalogueIssue[];
-  llm?: {
-    status: "NOT_USED" | "SUCCESS" | "FAILED";
-    suggestion?: {
-      suggestedCategory: string;
-      confidence: number;
-      reason: string;
-    };
-  };
-  metrics: {
-    processingMs: number;
-    llmUsed: boolean;
-  };
 };
+
+type AnalysisMetrics<Used extends boolean> = {
+  processingMs: number;
+  llmUsed: Used;
+};
+
+export type ProductAnalysis =
+  | (AnalysisBase & {
+      llm: { status: "SUCCESS"; suggestion: CategorySuggestion };
+      metrics: AnalysisMetrics<true>;
+    })
+  | (AnalysisBase & {
+      llm: { status: "FAILED" };
+      metrics: AnalysisMetrics<true>;
+    })
+  | (AnalysisBase & {
+      llm: { status: "NOT_USED" };
+      metrics: AnalysisMetrics<false>;
+    });
 
 export type ReviewRecord = {
   productId: string;
   title: string;
   issues: CatalogueIssue[];
   originalCategory?: string;
-  suggestedCategory?: string;
-  confidence?: number;
+  suggestedCategory?: AllowedCategory;
+  confidence?: CategorySuggestion["confidence"];
+  reason?: CategorySuggestion["reason"];
   status: "PENDING" | "APPROVED" | "REJECTED";
   createdAt: string;
   decidedAt?: string;
