@@ -2,39 +2,28 @@
 
 An n8n-orchestrated catalogue QA workflow that separates deterministic product validation from bounded LLM classification and routes every model suggestion through human review. Synthetic, hiring-focused commerce workflow: rules protect consequential fields, the model only interprets ambiguous taxonomy, and a person approves what moves forward.
 
+Catalogue data fails in two ways: deterministic defects (missing title, invalid price, inverted compare-at price) and genuinely ambiguous taxonomy that needs interpretation. Sending defects to a model wastes money and adds nondeterminism; asking rules to guess taxonomy produces false confidence. This MVP follows one boundary: deterministic validation runs first, the model sees only weak categories, and its output stays advisory until a human approves.
+
+> **LLMs interpret. Deterministic software acts.**
+
+## At a glance
+
 ![Catalogue review dashboard](evidence/web-review-dashboard.png)
 
 *Live local run: 12 synthetic Shopify-shaped products analysed — PASS 2, REVIEW 6, BLOCK 4 — with 6 decisions waiting in the human review queue.*
 
-## Why this exists
+## How the workflow works
 
-Catalogue data fails in two different ways. Some defects are deterministic: a missing title, a negative price, a compare-at price below the sale price. Others are genuinely ambiguous: a supplier taxonomy value such as `Other` that needs interpretation. Sending deterministic defects to a language model wastes money, adds latency, and makes outcomes nondeterministic; asking rules to guess taxonomy produces false confidence. This project demonstrates one boundary between the two: deterministic validation runs first and decides what the model is even allowed to see, and model output stays advisory until a human approves it.
+![End-to-end workflow](evidence/system-flow.png)
 
-## Design principle
+1. n8n receives a Shopify-shaped event and maps it to the internal `Product` contract.
+2. Fastify runs deterministic catalogue checks first.
+3. Any blocking defect stops the workflow before an LLM call.
+4. Only weak category classification invokes the LLM.
+5. LLM output is parsed, Zod-validated, and checked against the category allow-list.
+6. Every successful model suggestion still requires human approval.
 
-> **LLMs interpret. Deterministic software acts.**
-
-- Rules run before the LLM and own every blocking decision.
-- Any critical or high issue blocks: the LLM is skipped entirely, and all deterministic issues are still reported.
-- The model answers exactly one narrow question: classify a missing or weak category.
-- Every validated suggestion routes to REVIEW. Nothing is auto-applied.
-- Provider failure degrades to REVIEW with `llm.status = FAILED`; it cannot corrupt product state.
-
-## Architecture
-
-```mermaid
-flowchart TD
-    A[Shopify-shaped fixture] --> B[n8n: map to internal Product]
-    B --> C[Fastify API: POST /analyse-product]
-    C --> D[Deterministic catalogue rules]
-    D -->|critical or high issue| E[BLOCK - LLM skipped]
-    D -->|medium warnings| F[REVIEW - human queue]
-    D -->|clean, weak category| G[LLM category suggestion]
-    D -->|clean, strong category| H[PASS - LLM not used]
-    G --> I[JSON parse, allow-list, Zod]
-    I -->|valid suggestion| F
-    I -->|invalid or provider failed| F
-```
+## n8n orchestration
 
 ![n8n workflow canvas](evidence/n8n-workflow-canvas.png)
 
@@ -50,7 +39,7 @@ n8n owns orchestration and mapping; the TypeScript API owns analysis and review 
 
 ## What the three outcomes mean
 
-### PASS — clean, and the model is never called
+### PASS — deterministic path
 
 Rules found no issue, and the category is strong enough that classification is unnecessary.
 
@@ -58,7 +47,7 @@ Rules found no issue, and the category is strong enough that classification is u
 
 *Fixture 01 (Northline Runner Pro): mapped input on the left, API output on the right — `status: PASS`, empty issue list, `llm.status: NOT_USED`.*
 
-### REVIEW — a human decision is required
+### REVIEW — graceful LLM fallback
 
 REVIEW is the destination for deterministic warnings (zero inventory, missing images, missing description), for provider failure, and for every validated model suggestion.
 
@@ -66,7 +55,7 @@ REVIEW is the destination for deterministic warnings (zero inventory, missing im
 
 *Fixture 12 (Runner Pro), whose description carries an intentional prompt-injection string. This local demo ran without LLM credentials, so the unavailable provider degraded safely: `status: REVIEW`, `llm.status: FAILED`, no state change. This demonstrates provider-unavailable fallback, not successful classification; with a configured provider the same weak-category path would attach a validated suggestion and still route to REVIEW.*
 
-### BLOCK — deterministic stop, model skipped
+### BLOCK — deterministic stop
 
 Any critical or high issue blocks before the LLM is considered, and all deterministic issues are still reported.
 
