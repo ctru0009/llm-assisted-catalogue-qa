@@ -4,13 +4,13 @@ AI-assisted catalogue QA for Shopify-shaped product events. Deterministic TypeSc
 
 ## Current implementation status
 
-The API, React review UI, fixtures, and deterministic evaluation are present. The current checkout does **not** contain an `n8n/` workflow export, `scripts/demo.ts`, or `scripts/validate-n8n.ts`; the n8n commands below are therefore intended integration commands, not runnable commands yet. No n8n version is pinned in the current plan or repository. Record the exact local `n8n --version` used for the export before claiming workflow verification.
+The API, React review UI, fixtures, deterministic evaluation, n8n export, and n8n helper scripts are present. The root package has not yet wired `demo` or `validate:n8n` npm scripts, so those two npm commands below are intended integration commands; the underlying scripts can currently be run directly with `npx tsx`.
 
 ## Prerequisites
 
 - Node.js `^20.19.0 || >=22.12.0` (or any Node `>=22.12.0`), as declared by the root package.
 - npm with workspace support.
-- n8n is needed only for the workflow smoke test and must be run locally at the version recorded with the eventual export.
+- n8n `1.107.4` is the pinned version in `n8n/catalogue-qa-workflow.json` and must be used for the workflow smoke test.
 - A real OpenAI-compatible LLM endpoint is needed only for a real-model demo; evaluation does not need network access or credentials.
 
 ## Install and workspace commands
@@ -55,13 +55,13 @@ npm -w web exec -- vite --host localhost
 
 ## n8n workflow (intended Wave 2 integration)
 
-Start the pinned local version once it has been recorded:
+Start the pinned local version:
 
 ```bash
-npx n8n@<PINNED_VERSION> start
+npx n8n@1.107.4 start
 ```
 
-Open `http://localhost:5678`, import `n8n/catalogue-qa-workflow.json`, and activate the workflow (or use **Listen for test event** while testing). Copy the imported Webhook node's complete test or production URL into `N8N_WEBHOOK_URL`; use the matching `/webhook-test/...` or `/webhook/...` URL and relink it whenever the workflow path, host, or mode changes.
+Open `http://localhost:5678`, import `n8n/catalogue-qa-workflow.json`, and activate the workflow (or use **Listen for test event** while testing). The imported Webhook path is `catalogue-qa`, so the production URL is normally `http://127.0.0.1:5678/webhook/catalogue-qa` and the test URL is normally `http://127.0.0.1:5678/webhook-test/catalogue-qa`. Copy the complete URL shown by n8n into `N8N_WEBHOOK_URL`; use the matching `/webhook-test/...` or `/webhook/...` URL and relink it whenever the workflow path, host, or mode changes.
 
 The intended flow is:
 
@@ -69,14 +69,14 @@ The intended flow is:
 Shopify-shaped webhook → explicit first-variant/product mapping → POST /analyse-product → PASS/REVIEW/BLOCK switch → labelled Set/no-op terminal
 ```
 
-n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The planned structural and runtime commands are:
+n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The workflow's HTTP Request defaults to `http://127.0.0.1:3000/analyse-product`; set n8n's `CATALOGUE_API_URL` environment variable if the API has another reachable address. The intended npm commands are:
 
 ```bash
-npm run validate:n8n   # intended: parse the export and verify required nodes/branches
-npm run demo           # intended: send all 12 fixtures through the live webhook
+npm run validate:n8n   # intended root-script wiring: parse export and verify nodes/branches
+npm run demo           # intended root-script wiring: send all 12 fixtures through the live webhook
 ```
 
-Neither script is wired in this checkout. Structural validation would prove the JSON shape only; the demo must run with both n8n and the API live and assert statuses, issue codes, terminal labels, and mapping-sensitive fields.
+Until root script wiring lands, use `npx tsx scripts/validate-n8n.ts` for structural validation and `N8N_WEBHOOK_URL=... npx tsx scripts/demo.ts` for the live smoke. Structural validation proves the JSON shape only; the demo must run with both n8n and the API live and assert statuses, issue codes, terminal labels, and mapping-sensitive fields.
 
 ## Environment
 
@@ -88,6 +88,7 @@ See `.env.example` for safe, blank-by-default values.
 | `CORS_ORIGIN` | API | No | Defaults to `http://localhost:5173`. |
 | `VITE_API_URL` | Web | No | Defaults to `http://localhost:3000`; read by Vite at startup/build time. |
 | `N8N_WEBHOOK_URL` | Intended demo script | For demo | Must be the imported workflow's test/production webhook URL; the intended demo should fail clearly if absent. |
+| `CATALOGUE_API_URL` | n8n workflow | No | Workflow default is `http://127.0.0.1:3000/analyse-product`; override when n8n cannot reach that address. |
 | `LLM_API_KEY` | API | No | Together with the other two LLM fields, selects the provider. |
 | `LLM_BASE_URL` | API | No | OpenAI-compatible base URL; any blank LLM field makes the provider unavailable. |
 | `LLM_MODEL` | API | No | Model name; any blank LLM field makes the provider unavailable. |
@@ -132,4 +133,4 @@ Do not add an artifact link until it has been captured from a running n8n/API/LL
 4. For REVIEW, show the real model-backed suggestion and the human decision in the UI; include the before/after category only, never credentials or raw secret-bearing payloads.
 5. Record a short video (target maximum: 90 seconds) covering the same three outcomes and one approve/reject action.
 
-Operational screenshots/video are not included here because this checkout currently has no n8n export or running n8n/LLM environment. The real-model demo and n8n runtime evidence remain blocked until that integration is wired and run.
+The structural n8n validator has been run successfully, but operational screenshots/video are not included because this checkout has not been run with n8n and a configured LLM endpoint. The real-model demo and n8n runtime evidence remain blocked until that environment is started and captured.
