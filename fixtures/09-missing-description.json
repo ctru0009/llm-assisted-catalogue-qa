@@ -1,0 +1,22 @@
+{
+  "id": 1000000009,
+  "title": "Willow Canvas Tote",
+  "body_html": "",
+  "vendor": "Willow",
+  "product_type": "Luggage & Bags > Tote Bags",
+  "variants": [
+    {
+      "id": 2000000011,
+      "sku": "WCT-001",
+      "price": "54.00",
+      "compare_at_price": "76.00",
+      "inventory_quantity": 21
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000009,
+      "src": "https://cdn.example.com/catalogue/willow-canvas-tote.jpg"
+    }
+  ]
+}

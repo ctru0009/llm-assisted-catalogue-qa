@@ -1,0 +1,22 @@
+{
+  "id": 1000000010,
+  "title": "Northline Pace Trainer",
+  "body_html": "<p>A cushioned trainer designed for steady road miles and comfortable daily movement.</p>",
+  "vendor": "mens footwear / running",
+  "product_type": "Uncategorised",
+  "variants": [
+    {
+      "id": 2000000012,
+      "sku": "NPT-001",
+      "price": "112.00",
+      "compare_at_price": "148.00",
+      "inventory_quantity": 17
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000010,
+      "src": "https://cdn.example.com/catalogue/northline-pace-trainer.jpg"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": 1000000004,
+  "title": "Fieldstone Trail Pack",
+  "body_html": "<p>A compact trail pack with room for water, layers and everyday essentials.</p>",
+  "vendor": "Fieldstone",
+  "product_type": "Luggage & Bags > Backpacks > Hiking Backpacks",
+  "variants": [
+    {
+      "id": 2000000005,
+      "sku": "FTP-001",
+      "price": "-10.00",
+      "compare_at_price": "25.00",
+      "inventory_quantity": 6
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000005,
+      "src": "https://cdn.example.com/catalogue/fieldstone-trail-pack.jpg"
+    }
+  ]
+}

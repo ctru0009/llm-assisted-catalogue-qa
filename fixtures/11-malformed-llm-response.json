@@ -1,0 +1,22 @@
+{
+  "id": 1000000011,
+  "title": "Fieldstone Ridge Pack",
+  "body_html": "<p>A practical daypack with reinforced panels for short hikes and city commutes.</p>",
+  "vendor": "outdoor gear / daypacks",
+  "product_type": "Other",
+  "variants": [
+    {
+      "id": 2000000013,
+      "sku": "FRP-001",
+      "price": "92.00",
+      "compare_at_price": "120.00",
+      "inventory_quantity": 7
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000011,
+      "src": "https://cdn.example.com/catalogue/fieldstone-ridge-pack.jpg"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "id": 1000000006,
+  "title": "",
+  "body_html": "<p>A soft everyday tee made from lightweight cotton jersey.</p>",
+  "vendor": "Coastal",
+  "product_type": "Other",
+  "variants": [
+    {
+      "id": 2000000008,
+      "sku": "CTT-001",
+      "price": "42.00",
+      "compare_at_price": "58.00",
+      "inventory_quantity": 18
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000007,
+      "src": "https://cdn.example.com/catalogue/coastal-everyday-tee.jpg"
+    }
+  ]
+}

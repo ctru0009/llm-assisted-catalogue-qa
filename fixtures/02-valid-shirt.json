@@ -1,0 +1,22 @@
+{
+  "id": 1000000002,
+  "title": "Harbour Linen Shirt",
+  "body_html": "<p>A breathable linen shirt with a relaxed fit for warm-weather days.</p>",
+  "vendor": "Harbour",
+  "product_type": "Apparel & Accessories > Clothing > Shirts",
+  "variants": [
+    {
+      "id": 2000000003,
+      "sku": "HLS-001",
+      "price": "84.00",
+      "compare_at_price": "110.00",
+      "inventory_quantity": 11
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000003,
+      "src": "https://cdn.example.com/catalogue/harbour-linen-shirt.jpg"
+    }
+  ]
+}

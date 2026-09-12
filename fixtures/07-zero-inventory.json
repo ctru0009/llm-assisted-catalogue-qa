@@ -1,0 +1,22 @@
+{
+  "id": 1000000007,
+  "title": "Summit Hiking Backpack",
+  "body_html": "<p>A weather-ready hiking backpack with padded shoulder straps and a separate hydration sleeve.</p>",
+  "vendor": "Summit",
+  "product_type": "Luggage & Bags > Backpacks > Hiking Backpacks",
+  "variants": [
+    {
+      "id": 2000000009,
+      "sku": "SHB-001",
+      "price": "118.00",
+      "compare_at_price": "145.00",
+      "inventory_quantity": 0
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000008,
+      "src": "https://cdn.example.com/catalogue/summit-hiking-backpack.jpg"
+    }
+  ]
+}

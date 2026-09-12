@@ -1,0 +1,29 @@
+{
+  "id": 1000000005,
+  "title": "Ember Crossbody Bag",
+  "body_html": "<p>A compact crossbody bag with an adjustable strap and secure zip pocket.</p>",
+  "vendor": "Ember",
+  "product_type": "Apparel & Accessories > Handbags, Wallets & Cases > Handbags > Cross Body Bags",
+  "variants": [
+    {
+      "id": 2000000006,
+      "sku": "ECB-001",
+      "price": "129.00",
+      "compare_at_price": "99.00",
+      "inventory_quantity": 9
+    },
+    {
+      "id": 2000000007,
+      "sku": "ECB-002",
+      "price": "149.00",
+      "compare_at_price": "199.00",
+      "inventory_quantity": 4
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000006,
+      "src": "https://cdn.example.com/catalogue/ember-crossbody-bag.jpg"
+    }
+  ]
+}

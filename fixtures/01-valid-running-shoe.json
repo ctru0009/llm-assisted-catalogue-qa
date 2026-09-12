@@ -1,0 +1,33 @@
+{
+  "id": 1000000001,
+  "title": "Northline Runner Pro",
+  "body_html": "<p>A lightweight road-running shoe with responsive cushioning for daily training.</p>",
+  "vendor": "Northline",
+  "product_type": "Apparel & Accessories > Shoes > Athletic Shoes",
+  "variants": [
+    {
+      "id": 2000000001,
+      "sku": "NLR-001",
+      "price": "129.00",
+      "compare_at_price": "179.00",
+      "inventory_quantity": 24
+    },
+    {
+      "id": 2000000002,
+      "sku": "NLR-002",
+      "price": "139.00",
+      "compare_at_price": "189.00",
+      "inventory_quantity": 8
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000001,
+      "src": "https://cdn.example.com/catalogue/northline-runner-pro-front.jpg"
+    },
+    {
+      "id": 3000000002,
+      "src": "https://cdn.example.com/catalogue/northline-runner-pro-side.jpg"
+    }
+  ]
+}

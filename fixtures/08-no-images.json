@@ -1,0 +1,17 @@
+{
+  "id": 1000000008,
+  "title": "Morrow Pleated Polo",
+  "body_html": "<p>A polished cotton polo with a subtle pleated collar and easy everyday fit.</p>",
+  "vendor": "Morrow",
+  "product_type": "Apparel & Accessories > Clothing > Clothing Tops > Polos",
+  "variants": [
+    {
+      "id": 2000000010,
+      "sku": "MPP-001",
+      "price": "68.00",
+      "compare_at_price": "92.00",
+      "inventory_quantity": 13
+    }
+  ],
+  "images": []
+}

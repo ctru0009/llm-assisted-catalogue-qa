@@ -1,0 +1,22 @@
+{
+  "id": 1000000003,
+  "title": "Atlas Court Sneaker",
+  "body_html": "<p>A clean court-inspired sneaker with a durable rubber sole.</p>",
+  "vendor": "Atlas",
+  "product_type": "Apparel & Accessories > Shoes > Sneakers",
+  "variants": [
+    {
+      "id": 2000000004,
+      "sku": "",
+      "price": "96.00",
+      "compare_at_price": "125.00",
+      "inventory_quantity": 15
+    }
+  ],
+  "images": [
+    {
+      "id": 3000000004,
+      "src": "https://cdn.example.com/catalogue/atlas-court-sneaker.jpg"
+    }
+  ]
+}
