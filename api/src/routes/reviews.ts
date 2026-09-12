@@ -2,12 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import type { ReviewStore } from "../store/review-store";
+import { ProductIdSchema } from "../types/product";
 
 const DecisionSchema = z.object({ decision: z.enum(["approve", "reject"]) });
-const ProductIdSchema = z
-  .string()
-  .min(1, "Product ID is required.")
-  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "Product ID has an invalid format.");
 
 function validationDetails(error: z.ZodError, field?: string) {
   return error.issues.map(({ code, message, path }) => ({

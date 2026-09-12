@@ -129,6 +129,28 @@ test("initial rejection removes pending review and preserves product through the
   assert.equal((await app.inject({ method: "GET", url: "/reviews" })).json().items.length, 0);
 });
 
+test("a product ID accepted during analysis remains accepted during decision, including dots", async () => {
+  const app = await createApp({ provider, store: createReviewStore() });
+  const dottedProduct = { ...product, id: "prod.1" };
+
+  const analysis = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    payload: { product: dottedProduct },
+  });
+  assert.equal(analysis.statusCode, 200);
+  assert.equal(analysis.json().productId, "prod.1");
+
+  const decision = await app.inject({
+    method: "POST",
+    url: "/reviews/prod.1",
+    payload: { decision: "approve" },
+  });
+  assert.equal(decision.statusCode, 200);
+  assert.equal(decision.json().productId, "prod.1");
+  assert.equal(decision.json().status, "APPROVED");
+});
+
 test("invalid analysis and decision requests return sanitized Zod details", async () => {
   const app = await createApp({ provider, store: createReviewStore() });
 

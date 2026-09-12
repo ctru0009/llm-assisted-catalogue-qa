@@ -3,8 +3,13 @@ import { z } from "zod";
 import type { AllowedCategory } from "../llm/categories";
 import type { CategorySuggestion } from "../llm/schemas";
 
+export const ProductIdSchema = z
+  .string()
+  .min(1, "Product ID is required.")
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "Product ID has an invalid format.");
+
 export const ProductSchema = z.object({
-  id: z.string().min(1),
+  id: ProductIdSchema,
   title: z.string().max(200),
   sku: z.string(),
   price: z.number(),
