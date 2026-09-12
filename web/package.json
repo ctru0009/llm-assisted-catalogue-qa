@@ -1,9 +1,12 @@
 {
   "name": "@llm-assisted-catalogue-qa/web",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "vite build",
-    "test": "tsc --noEmit -p tsconfig.json"
+    "test": "npm run typecheck && npm run test:behavioral",
+    "test:behavioral": "node --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "react": "^19.1.1",

@@ -1,11 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  Decision,
-  DecisionResponse,
   ReviewItem,
   ReviewStatus,
   ReviewsResponse,
 } from "./types";
+import {
+  DecisionGate,
+  ReviewRequestError,
+  fetchReviews,
+  removeReviewItem,
+  submitDecision,
+} from "./review-client";
 
 const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000").replace(
   /\/$/,
@@ -18,19 +23,6 @@ type ActionNotice = {
   tone: "success" | "error";
   message: string;
 };
-
-function isReviewsResponse(value: unknown): value is ReviewsResponse {
-  if (!value || typeof value !== "object") return false;
-
-  const response = value as Partial<ReviewsResponse>;
-  return Boolean(
-    response.summary &&
-      typeof response.summary.PASS === "number" &&
-      typeof response.summary.REVIEW === "number" &&
-      typeof response.summary.BLOCK === "number" &&
-      Array.isArray(response.items),
-  );
-}
 
 function StatusTag({ status }: { status: ReviewStatus }) {
   return (
@@ -68,19 +60,21 @@ function MetricCard({
 
 function ReviewCard({
   item,
-  deciding,
+  saving,
+  actionsDisabled,
   onDecision,
 }: {
   item: ReviewItem;
-  deciding: boolean;
-  onDecision: (item: ReviewItem, decision: Decision) => void;
+  saving: boolean;
+  actionsDisabled: boolean;
+  onDecision: (decision: "approve" | "reject") => void;
 }) {
   const hasSuggestion = Boolean(item.suggestedCategory);
   const titleId = `review-${item.productId}-title`;
   const contextId = `review-${item.productId}-context`;
 
   return (
-    <article className="review-card" aria-labelledby={titleId} aria-busy={deciding}>
+    <article className="review-card" aria-labelledby={titleId} aria-busy={saving}>
       <div className="review-card__header">
         <div>
           <span className="overline">Review item · {item.productId}</span>
@@ -152,13 +146,13 @@ function ReviewCard({
             ? "Approve to apply this exact category, or reject it."
             : "Approve to acknowledge these warnings, or reject the review."}
         </p>
-        {deciding && <p className="decision-progress" role="status">Saving your decision…</p>}
+        {saving && <p className="decision-progress" role="status">Saving your decision…</p>}
         <div className="decision-actions">
           <button
             className="button button--quiet"
             type="button"
-            disabled={deciding}
-            onClick={() => onDecision(item, "reject")}
+            disabled={actionsDisabled}
+            onClick={() => onDecision("reject")}
             aria-describedby={`${contextId} ${contextId}-hint`}
           >
             Reject
@@ -166,11 +160,11 @@ function ReviewCard({
           <button
             className="button button--approve"
             type="button"
-            disabled={deciding}
-            onClick={() => onDecision(item, "approve")}
+            disabled={actionsDisabled}
+            onClick={() => onDecision("approve")}
             aria-describedby={`${contextId} ${contextId}-hint`}
           >
-            {deciding ? "Saving…" : hasSuggestion ? "Approve suggestion" : "Approve"}
+            {saving ? "Saving…" : hasSuggestion ? "Approve suggestion" : "Approve"}
           </button>
         </div>
       </div>
@@ -223,27 +217,21 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState("The local API did not respond.");
   const [decidingId, setDecidingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<ActionNotice | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const decisionGateRef = useRef(new DecisionGate());
 
   const loadReviews = useCallback(async () => {
     setLoadState("loading");
     setErrorMessage("The local API did not respond.");
     try {
-      const response = await fetch(`${API_URL}/reviews`);
-      if (!response.ok) throw new Error(`Request failed (${response.status})`);
-
-      const payload: unknown = await response.json();
-      if (!isReviewsResponse(payload)) throw new Error("The API returned an unexpected response.");
-
-      setReviews(payload);
+      setReviews(await fetchReviews(API_URL));
       setLoadState("ready");
     } catch (error) {
       setLoadState("error");
       setErrorMessage(
-        error instanceof TypeError
-          ? "The local API is not reachable. Start the API, then try again."
-          : error instanceof Error
-            ? error.message
-            : "The local API did not respond.",
+        error instanceof ReviewRequestError || error instanceof TypeError
+          ? "The local review service could not complete the request. Check that the API is running and try again."
+          : "The review service returned data we could not use. Try again or contact support.",
       );
     }
   }, []);
@@ -252,21 +240,18 @@ export function App() {
     void loadReviews();
   }, [loadReviews]);
 
-  const handleDecision = async (item: ReviewItem, decision: Decision) => {
-    if (decidingId) return;
+  const handleDecision = async (item: ReviewItem, decision: "approve" | "reject") => {
+    if (decidingId || !decisionGateRef.current.tryAcquire()) return;
 
     setDecidingId(item.productId);
     setNotice(null);
     try {
-      const response = await fetch(`${API_URL}/reviews/${encodeURIComponent(item.productId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
+      const result = await submitDecision(API_URL, {
+        productId: item.productId,
+        decision,
+        suggestedCategory: item.suggestedCategory,
       });
-
-      if (!response.ok) throw new Error(`Decision could not be saved (${response.status}).`);
-      const result = (await response.json().catch(() => null)) as DecisionResponse | null;
-      const appliedCategory = result?.appliedCategory || item.suggestedCategory;
+      const appliedCategory = result.appliedCategory;
       const message =
         decision === "approve"
           ? appliedCategory
@@ -275,20 +260,26 @@ export function App() {
           : `${item.title} rejected and removed from the pending queue.`;
 
       setReviews((current) =>
-        current
-          ? { ...current, items: current.items.filter(({ productId }) => productId !== item.productId) }
-          : current,
+        current ? { ...current, items: removeReviewItem(current.items, item.productId) } : current,
       );
       setNotice({ tone: "success", message });
     } catch (error) {
       setNotice({
         tone: "error",
-        message: error instanceof Error ? error.message : "The decision could not be saved.",
+        message:
+          error instanceof ReviewRequestError || error instanceof TypeError
+            ? "The local review service could not complete the request. Check that the API is running and try again."
+            : "The decision response was invalid or could not be saved. The review is still pending; try again.",
       });
     } finally {
+      decisionGateRef.current.release();
       setDecidingId(null);
     }
   };
+
+  useEffect(() => {
+    if (notice?.tone === "success") noticeRef.current?.focus();
+  }, [notice]);
 
   const summary = reviews?.summary;
   const pendingCount = reviews?.items.length ?? 0;
@@ -337,7 +328,13 @@ export function App() {
         </section>
 
         {notice && (
-          <div className={`action-notice action-notice--${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} aria-live="polite">
+          <div
+            ref={noticeRef}
+            className={`action-notice action-notice--${notice.tone}`}
+            role={notice.tone === "error" ? "alert" : "status"}
+            aria-live="polite"
+            tabIndex={-1}
+          >
             <span aria-hidden="true">{notice.tone === "success" ? "✓" : "!"}</span>
             <p>{notice.message}</p>
           </div>
@@ -363,8 +360,9 @@ export function App() {
                   <ReviewCard
                     key={item.productId}
                     item={item}
-                    deciding={decidingId === item.productId}
-                    onDecision={handleDecision}
+                    saving={decidingId === item.productId}
+                    actionsDisabled={decidingId !== null}
+                    onDecision={(decision) => void handleDecision(item, decision)}
                   />
                 ))}
               </div>
