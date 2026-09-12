@@ -28,6 +28,27 @@ test("ProductSchema accepts the internal product envelope", () => {
   assert.deepEqual(product.images, ["https://example.com/image.jpg"]);
 });
 
+test("ProductSchema rejects oversized prompt-bound product text", () => {
+  const product = {
+    id: "prod_123",
+    title: "Velocity Runner X",
+    sku: "VX-001",
+    price: 129,
+    inventory: 5,
+    category: "Other",
+    vendorCategory: "mens footwear / running",
+    description: "Lightweight road running shoe.",
+    images: [],
+  };
+
+  assert.throws(() =>
+    ProductSchema.parse({ ...product, title: "x".repeat(201) }),
+  );
+  assert.throws(() =>
+    ProductSchema.parse({ ...product, description: "x".repeat(2001) }),
+  );
+});
+
 test("category suggestions use the bounded output shape", () => {
   const suggestion = CategorySuggestionSchema.parse({
     suggestedCategory: ALLOWED_CATEGORIES[0],

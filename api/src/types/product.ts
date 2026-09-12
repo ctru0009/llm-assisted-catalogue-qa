@@ -5,14 +5,14 @@ import type { CategorySuggestion } from "../llm/schemas";
 
 export const ProductSchema = z.object({
   id: z.string().min(1),
-  title: z.string(),
+  title: z.string().max(200),
   sku: z.string(),
   price: z.number(),
   compareAtPrice: z.number().optional(),
   inventory: z.number(),
-  category: z.string().optional(),
-  vendorCategory: z.string().optional(),
-  description: z.string().optional(),
+  category: z.string().max(200).optional(),
+  vendorCategory: z.string().max(200).optional(),
+  description: z.string().max(2000).optional(),
   images: z.array(z.string()),
 });
 
