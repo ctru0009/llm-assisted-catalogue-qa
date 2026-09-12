@@ -7,7 +7,7 @@ import type {
   ReviewsResponse,
 } from "./types";
 
-const REVIEW_STATUSES = ["PASS", "REVIEW", "BLOCK"] as const;
+const REVIEW_STATUSES = ["PASS", "REVIEW", "BLOCK", "PENDING"] as const;
 const ISSUE_SEVERITIES = ["critical", "high", "medium", "low"] as const;
 
 type FetchResponse = Pick<Response, "ok" | "json">;

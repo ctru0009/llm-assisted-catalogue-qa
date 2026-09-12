@@ -138,3 +138,11 @@ test("valid GET /reviews data is accepted", async () => {
   const result = await fetchReviews("http://api.test", async () => response(validReviews));
   assert.equal(result.items[0]?.productId, reviewItem.productId);
 });
+
+test("pending review item status from the real API is accepted", async () => {
+  const result = await fetchReviews("http://api.test", async () => response({
+    ...validReviews,
+    items: [{ ...reviewItem, status: "PENDING" }],
+  }));
+  assert.equal(result.items[0]?.status, "PENDING");
+});

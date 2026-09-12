@@ -1,4 +1,4 @@
-export type ReviewStatus = "PASS" | "REVIEW" | "BLOCK";
+export type ReviewStatus = "PASS" | "REVIEW" | "BLOCK" | "PENDING";
 
 export type IssueSeverity = "critical" | "high" | "medium" | "low";
 

@@ -125,6 +125,7 @@ h2, h3, h4, p { margin-top: 0; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .status-pass { color: var(--mint-deep); }
 .status-review { color: var(--amber); }
+.status-pending { color: var(--amber); }
 .status-block { color: var(--red); }
 
 .queue-section { margin-top: 88px; }
