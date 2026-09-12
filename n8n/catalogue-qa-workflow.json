@@ -1,0 +1,376 @@
+{
+  "name": "Catalogue QA — n8n 1.107.4",
+  "description": "Pinned for local n8n 1.107.4. Receives a Shopify-shaped product, maps it to the internal product envelope, calls the local API, and routes PASS/REVIEW/BLOCK to labelled no-op terminals.",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "catalogue-qa",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "catalogue-qa-webhook",
+      "name": "Shopify Product Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "webhookId": "catalogue-qa-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "catalogue-qa-product-mapping",
+              "name": "product",
+              "value": "={{ { id: String($json.id), title: $json.title, sku: $json.variants[0].sku, price: Number($json.variants[0].price), ...($json.variants[0].compare_at_price === undefined || $json.variants[0].compare_at_price === '' ? {} : { compareAtPrice: Number($json.variants[0].compare_at_price) }), inventory: $json.variants[0].inventory_quantity, category: $json.product_type, vendorCategory: $json.vendor, description: $json.body_html, images: $json.images.map(image => image.src) } }}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "catalogue-qa-map-product",
+      "name": "Map Shopify payload to internal product",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.CATALOGUE_API_URL || 'http://127.0.0.1:3000/analyse-product' }}",
+        "sendHeaders": false,
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { product: $json.product } }}",
+        "options": {}
+      },
+      "id": "catalogue-qa-api-request",
+      "name": "POST local API /analyse-product",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        300
+      ],
+      "notes": "Defaults to http://127.0.0.1:3000/analyse-product. Set CATALOGUE_API_URL in n8n if the local API is exposed at another address.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "catalogue-qa-pass-condition",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "PASS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PASS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "catalogue-qa-review-condition",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "REVIEW",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "REVIEW"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "catalogue-qa-block-condition",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "BLOCK",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "BLOCK"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none"
+        }
+      },
+      "id": "catalogue-qa-status-switch",
+      "name": "Route by analysis status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1020,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "catalogue-qa-pass-outcome",
+              "name": "outcome",
+              "value": "PASS",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-pass-label",
+              "name": "outcomeLabel",
+              "value": "PASS (no-op)",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-pass-status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-pass-issues",
+              "name": "issueCodes",
+              "value": "={{ $json.issues.map(issue => issue.code) }}",
+              "type": "array"
+            },
+            {
+              "id": "catalogue-qa-pass-mapped-product",
+              "name": "mappedProduct",
+              "value": "={{ $('Map Shopify payload to internal product').item.json.product }}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "catalogue-qa-pass-terminal",
+      "name": "Outcome PASS (no-op)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1280,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "catalogue-qa-review-outcome",
+              "name": "outcome",
+              "value": "REVIEW",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-review-label",
+              "name": "outcomeLabel",
+              "value": "REVIEW (no-op)",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-review-status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-review-issues",
+              "name": "issueCodes",
+              "value": "={{ $json.issues.map(issue => issue.code) }}",
+              "type": "array"
+            },
+            {
+              "id": "catalogue-qa-review-mapped-product",
+              "name": "mappedProduct",
+              "value": "={{ $('Map Shopify payload to internal product').item.json.product }}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "catalogue-qa-review-terminal",
+      "name": "Outcome REVIEW (no-op)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "catalogue-qa-block-outcome",
+              "name": "outcome",
+              "value": "BLOCK",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-block-label",
+              "name": "outcomeLabel",
+              "value": "BLOCK (no-op)",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-block-status",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "catalogue-qa-block-issues",
+              "name": "issueCodes",
+              "value": "={{ $json.issues.map(issue => issue.code) }}",
+              "type": "array"
+            },
+            {
+              "id": "catalogue-qa-block-mapped-product",
+              "name": "mappedProduct",
+              "value": "={{ $('Map Shopify payload to internal product').item.json.product }}",
+              "type": "object"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "catalogue-qa-block-terminal",
+      "name": "Outcome BLOCK (no-op)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1280,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Shopify Product Webhook": {
+      "main": [
+        [
+          {
+            "node": "Map Shopify payload to internal product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Shopify payload to internal product": {
+      "main": [
+        [
+          {
+            "node": "POST local API /analyse-product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST local API /analyse-product": {
+      "main": [
+        [
+          {
+            "node": "Route by analysis status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by analysis status": {
+      "main": [
+        [
+          {
+            "node": "Outcome PASS (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Outcome REVIEW (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Outcome BLOCK (no-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "catalogue-qa-n8n-1-107-4",
+  "meta": {
+    "n8nVersion": "1.107.4",
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "tags": []
+}
