@@ -38,6 +38,7 @@ export class LLMProviderError extends Error {
 export type CategorySuggestionFailure = {
   status: "FAILED";
   error: LLMProviderError;
+  transportAttempted: boolean;
 };
 
 export type CategorySuggestionResult =

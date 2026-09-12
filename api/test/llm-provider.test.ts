@@ -200,6 +200,7 @@ for (const [label, response, expectedCode] of terminalResponseFailures) {
     if ("status" in result && result.status === "FAILED") {
       assert.equal(result.error.code, expectedCode);
       assert.equal(result.error.retryable, false);
+      assert.equal(result.transportAttempted, true);
     }
     assert.equal(calls(), 2);
   });
@@ -226,6 +227,7 @@ for (const [label, error, expectedCode] of retryableErrors) {
     if ("status" in result && result.status === "FAILED") {
       assert.equal(result.error.code, expectedCode);
       assert.equal(result.error.retryable, false);
+      assert.equal(result.transportAttempted, true);
     }
     assert.equal(calls(), 2);
   });
@@ -246,6 +248,7 @@ for (const [label, transportError, expectedCode] of [
     if ("status" in result && result.status === "FAILED") {
       assert.equal(result.error.code, expectedCode);
       assert.equal(result.error.retryable, false);
+      assert.equal(result.transportAttempted, true);
     }
   });
 }
@@ -263,6 +266,7 @@ test("a second failure returns a typed provider failure", async () => {
     assert.equal(result.error.name, "LLMProviderError");
     assert.equal(result.error.code, "MALFORMED_RESPONSE");
     assert.equal(result.error.retryable, false);
+    assert.equal(result.transportAttempted, true);
   }
   assert.equal(calls(), 2);
 });
@@ -278,5 +282,6 @@ test("unavailable provider fails without making a transport call", async () => {
   assert.equal(calls, 0);
   if ("status" in result && result.status === "FAILED") {
     assert.equal(result.error.code, "UNAVAILABLE");
+    assert.equal(result.transportAttempted, false);
   }
 });

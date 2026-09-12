@@ -8,6 +8,11 @@ import {
   type LLMProvider,
 } from "../src/llm/provider";
 import { ALLOWED_CATEGORIES } from "../src/llm/categories";
+import {
+  OpenAICompatibleProvider,
+  type OpenAICompatibleClient,
+} from "../src/llm/openai-compatible";
+import { UnavailableProvider } from "../src/llm/unavailable-provider";
 import { analyseProduct } from "../src/services/analyse-product";
 import type { Product } from "../src/types/product";
 
@@ -39,6 +44,7 @@ class MockProvider implements LLMProvider {
 const failedProviderResult = (): CategorySuggestionResult => ({
   status: "FAILED",
   error: new LLMProviderError("UNAVAILABLE", "provider unavailable", true),
+  transportAttempted: true,
 });
 
 test("valid category avoids the provider and reports NOT_USED", async () => {
@@ -163,6 +169,88 @@ test("provider failure produces REVIEW without exposing provider details", async
   assert.deepEqual(result.llm, { status: "FAILED" });
   assert.equal(result.metrics.llmUsed, true);
 });
+
+test("unavailable provider produces REVIEW/FAILED without marking transport as used", async () => {
+  const result = await analyseProduct(
+    validProduct({ category: "Other" }),
+    new UnavailableProvider(),
+  );
+
+  assert.equal(result.status, "REVIEW");
+  assert.deepEqual(result.llm, { status: "FAILED" });
+  assert.equal(result.metrics.llmUsed, false);
+});
+
+test("a transport failure after an external request marks the LLM as used", async () => {
+  let calls = 0;
+  const client: OpenAICompatibleClient = {
+    chat: {
+      completions: {
+        async create() {
+          calls += 1;
+          throw Object.assign(new Error("connection failed"), {
+            name: "APIConnectionError",
+          });
+        },
+      },
+    },
+  };
+  const provider = new OpenAICompatibleProvider({
+    apiKey: "test-key",
+    baseUrl: "https://llm.example.test/v1",
+    model: "catalogue-model",
+    client,
+  });
+
+  const result = await analyseProduct(validProduct({ category: "Other" }), provider);
+
+  assert.equal(calls, 2);
+  assert.equal(result.status, "REVIEW");
+  assert.deepEqual(result.llm, { status: "FAILED" });
+  assert.equal(result.metrics.llmUsed, true);
+});
+
+for (const [label, payload] of [
+  ["confidence outside the range", {
+    suggestedCategory: ALLOWED_CATEGORIES[0],
+    confidence: 2,
+    reason: "valid reason",
+  }],
+  ["empty reason", {
+    suggestedCategory: ALLOWED_CATEGORIES[0],
+    confidence: 0.5,
+    reason: "",
+  }],
+  ["oversized reason", {
+    suggestedCategory: ALLOWED_CATEGORIES[0],
+    confidence: 0.5,
+    reason: "x".repeat(301),
+  }],
+  ["non-allow-listed category", {
+    suggestedCategory: "Untrusted > Category",
+    confidence: 0.5,
+    reason: "valid reason",
+  }],
+  ["malformed values", {
+    suggestedCategory: null,
+    confidence: "high",
+    reason: { text: "not a string" },
+  }],
+] as const) {
+  test(`unsafe provider ${label} becomes REVIEW/FAILED without throwing`, async () => {
+    const provider: LLMProvider = {
+      async suggestCategory(): Promise<CategorySuggestionResult> {
+        return payload as unknown as CategorySuggestionResult;
+      },
+    };
+
+    const result = await analyseProduct(validProduct({ category: "Other" }), provider);
+
+    assert.equal(result.status, "REVIEW");
+    assert.deepEqual(result.llm, { status: "FAILED" });
+    assert.equal(result.metrics.llmUsed, true);
+  });
+}
 
 test("provider exceptions produce REVIEW and preserve deterministic review issues", async () => {
   const provider: LLMProvider = {

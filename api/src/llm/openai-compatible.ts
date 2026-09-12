@@ -53,22 +53,31 @@ export class OpenAICompatibleProvider implements LLMProvider {
   async suggestCategory(
     input: CategorySuggestionInput,
   ): Promise<CategorySuggestionResult> {
+    let transportAttempted = false;
+
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const result = await this.trySuggestion(input);
 
-      if (!(result instanceof LLMProviderError)) {
+      if (!("error" in result)) {
         return result;
       }
 
-      if (result.retryable && attempt === 0) {
+      transportAttempted ||= result.transportAttempted;
+
+      if (result.error.retryable && attempt === 0) {
         continue;
       }
 
       return {
         status: "FAILED",
-        error: result.retryable
-          ? new LLMProviderError(result.code, result.message, false)
-          : result,
+        error: result.error.retryable
+          ? new LLMProviderError(
+              result.error.code,
+              result.error.message,
+              false,
+            )
+          : result.error,
+        transportAttempted,
       };
     }
 
@@ -79,13 +88,23 @@ export class OpenAICompatibleProvider implements LLMProvider {
         "The LLM request failed.",
         false,
       ),
+      transportAttempted,
     };
   }
 
   private async trySuggestion(
     input: CategorySuggestionInput,
-  ): Promise<Awaited<CategorySuggestionResult> | LLMProviderError> {
+  ): Promise<
+    | Awaited<Exclude<CategorySuggestionResult, { status: "FAILED" }>>
+    | {
+        error: LLMProviderError;
+        transportAttempted: boolean;
+      }
+  > {
+    let transportAttempted = false;
+
     try {
+      transportAttempted = true;
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages: [
@@ -135,11 +154,11 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
       return suggestion.data;
     } catch (error) {
-      if (error instanceof LLMProviderError) {
-        return error;
-      }
-
-      return classifyTransportError(error);
+      return {
+        error:
+          error instanceof LLMProviderError ? error : classifyTransportError(error),
+        transportAttempted,
+      };
     }
   }
 }

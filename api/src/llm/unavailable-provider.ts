@@ -16,6 +16,7 @@ export class UnavailableProvider implements LLMProvider {
         "The LLM provider is not configured.",
         false,
       ),
+      transportAttempted: false,
     };
   }
 }

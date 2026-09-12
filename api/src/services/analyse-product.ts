@@ -56,13 +56,23 @@ export const analyseProduct = async (
       "status" in providerResult &&
       providerResult.status === "FAILED"
     ) {
+      if (providerResult.transportAttempted) {
+        return {
+          productId: product.id,
+          status: "REVIEW",
+          issues,
+          llm: { status: "FAILED" },
+          metrics: metrics(startedAt, true),
+        };
+      }
+
       return {
         productId: product.id,
         status: "REVIEW",
         issues,
         llm: { status: "FAILED" },
-        metrics: metrics(startedAt, true),
-      };
+        metrics: metrics(startedAt, false),
+      } as unknown as ProductAnalysis;
     }
 
     const suggestion = CategorySuggestionSchema.safeParse(providerResult);
