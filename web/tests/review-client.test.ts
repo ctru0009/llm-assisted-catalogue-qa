@@ -68,6 +68,38 @@ test("malformed decision confirmation is rejected before removal", async () => {
   }
 });
 
+test("rejection confirmation cannot apply a category", async () => {
+  await assert.rejects(
+    submitDecision(
+      "http://api.test",
+      { productId: reviewItem.productId, decision: "reject", suggestedCategory: reviewItem.suggestedCategory },
+      async () => response({
+        productId: reviewItem.productId,
+        decision: "reject",
+        status: "REJECTED",
+        appliedCategory: reviewItem.suggestedCategory,
+      }),
+    ),
+    ReviewContractError,
+  );
+});
+
+test("deterministic-only approval confirmation cannot apply a category", async () => {
+  await assert.rejects(
+    submitDecision(
+      "http://api.test",
+      { productId: "prod_deterministic", decision: "approve" },
+      async () => response({
+        productId: "prod_deterministic",
+        decision: "approve",
+        status: "APPROVED",
+        appliedCategory: "Apparel & Accessories > Shoes > Athletic Shoes",
+      }),
+    ),
+    ReviewContractError,
+  );
+});
+
 test("request failures use a typed recoverable error", async () => {
   await assert.rejects(
     fetchReviews("http://api.test", async () => {

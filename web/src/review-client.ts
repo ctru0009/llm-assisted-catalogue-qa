@@ -119,7 +119,11 @@ export function parseDecisionResponse(
   if (value.decision !== expectation.decision || value.status !== expectedStatus) {
     throw new ReviewContractError();
   }
-  if ("appliedCategory" in value && !isNonEmptyString(value.appliedCategory)) {
+  const hasAppliedCategory = "appliedCategory" in value;
+  if (hasAppliedCategory && !isNonEmptyString(value.appliedCategory)) {
+    throw new ReviewContractError();
+  }
+  if (hasAppliedCategory && (expectation.decision !== "approve" || !expectation.suggestedCategory)) {
     throw new ReviewContractError();
   }
   if (
