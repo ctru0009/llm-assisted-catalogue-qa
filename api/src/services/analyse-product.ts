@@ -72,7 +72,7 @@ export const analyseProduct = async (
         issues,
         llm: { status: "FAILED" },
         metrics: metrics(startedAt, false),
-      } as unknown as ProductAnalysis;
+      };
     }
 
     const suggestion = CategorySuggestionSchema.safeParse(providerResult);

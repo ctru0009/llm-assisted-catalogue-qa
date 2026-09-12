@@ -44,7 +44,7 @@ export type ProductAnalysis =
     })
   | (AnalysisBase & {
       llm: { status: "FAILED" };
-      metrics: AnalysisMetrics<true>;
+      metrics: AnalysisMetrics<false | true>;
     })
   | (AnalysisBase & {
       llm: { status: "NOT_USED" };
