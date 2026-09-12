@@ -133,12 +133,20 @@ Shopify is simulated at the boundary with fictional Shopify-shaped fixtures. The
 
 ## Screenshots and video evidence
 
-Do not add an artifact link until it has been captured from a running n8n/API/LLM environment. For operational evidence:
+Captured from a real local run: n8n `1.107.4` (Docker), the API, and the web UI, after `npm run demo` sent all 12 fixtures through the webhook.
 
-1. Run the pinned n8n version, API, and web UI; import and activate the workflow.
-2. Set `N8N_WEBHOOK_URL` to the current webhook URL and configure a real LLM endpoint without exposing the API key.
-3. Capture one PASS, one REVIEW, and one BLOCK execution, showing the mapped payload, API response, status switch, and labelled terminal branch.
-4. For REVIEW, show the real model-backed suggestion and the human decision in the UI; include the before/after category only, never credentials or raw secret-bearing payloads.
-5. Record a short video (target maximum: 90 seconds) covering the same three outcomes and one approve/reject action.
+| Artifact | What it shows |
+|---|---|
+| `evidence/n8n-executions.png` | n8n executions list: every fixture run succeeded. |
+| `evidence/n8n-workflow-canvas.png` | The imported workflow: Webhook → Shopify mapper → POST local API → status Switch → labelled PASS/REVIEW/BLOCK terminals. |
+| `evidence/n8n-execution-pass.png` | Fixture 01 (`1000000001`) node output: `status: PASS`, `llm.status: NOT_USED`. |
+| `evidence/n8n-execution-review.png` | Fixture 12 (`1000000012`) node output: `status: REVIEW`, `llm.status: FAILED`; the hostile `body_html` did not affect the result. |
+| `evidence/n8n-execution-block.png` | Fixture 06 (`1000000006`) node output: `status: BLOCK` with `MISSING_TITLE`. |
+| `evidence/web-review-dashboard.png` | Review UI: 12 products analysed, PASS 2 / REVIEW 6 / BLOCK 4, 6 pending decisions. |
 
-The structural n8n validator in current HEAD has been run successfully against the 1.107.4 export. This is artifact validation only: operational screenshots/video are not included because this checkout has not been run with n8n and a configured LLM endpoint. The real-model demo and n8n runtime evidence remain blocked until that environment is started and captured.
+The run used the unavailable provider (no LLM configuration), so weak-category fixtures resolved to `REVIEW` with `llm.status = FAILED`; routing is identical with a configured provider.
+
+Still to capture manually in an environment with a real LLM endpoint:
+
+1. One real configured-LLM review suggestion, shown with its before/after category in the UI.
+2. A short video (target maximum: 90 seconds) covering one PASS, one REVIEW, and one BLOCK execution plus one approve/reject action.
