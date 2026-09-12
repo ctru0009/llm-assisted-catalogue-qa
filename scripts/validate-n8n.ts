@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 type Node = {
   name: string;
@@ -17,7 +16,7 @@ type Workflow = {
   meta?: { n8nVersion?: string };
 };
 
-const workflowPath = process.argv[2] ?? join(fileURLToPath(new URL("..", import.meta.url)), "n8n/catalogue-qa-workflow.json");
+const workflowPath = process.argv[2] ?? join(__dirname, "..", "n8n/catalogue-qa-workflow.json");
 
 function readWorkflow(path: string): Workflow {
   let parsed: unknown;

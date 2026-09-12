@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 type Status = "PASS" | "REVIEW" | "BLOCK";
 type ShopifyFixture = {
@@ -20,7 +19,7 @@ type ShopifyFixture = {
 };
 type ExpectedFixture = { status: Status; issueCodes: string[] };
 
-const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
+const fixtureDirectory = join(dirname(__filename), "..", "fixtures");
 const expectedFixtures: Record<string, ExpectedFixture> = {
   "01-valid-running-shoe.json": { status: "PASS", issueCodes: [] },
   "02-valid-shirt.json": { status: "PASS", issueCodes: [] },
