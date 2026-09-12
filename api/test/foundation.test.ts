@@ -39,6 +39,13 @@ test("category suggestions use the bounded output shape", () => {
       reason: "Invalid confidence",
     }),
   );
+  assert.throws(() =>
+    CategorySuggestionSchema.parse({
+      suggestedCategory: "Untrusted > Category",
+      confidence: 0.94,
+      reason: "Not in the taxonomy",
+    }),
+  );
 });
 
 test("missing LLM fields select an unavailable configuration", () => {
