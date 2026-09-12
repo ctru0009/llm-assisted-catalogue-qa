@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
+import type { FastifyInstance } from "fastify";
 
 import { createApp } from "../src/app";
 import { ALLOWED_CATEGORIES } from "../src/llm/categories";
 import type { LLMProvider } from "../src/llm/provider";
-import { createReviewStore } from "../src/store/review-store";
+import { UnavailableProvider } from "../src/llm/unavailable-provider";
+import { createReviewStore, type ReviewStore } from "../src/store/review-store";
 import type { Product } from "../src/types/product";
 
 const product: Product = {
@@ -30,9 +32,21 @@ const provider: LLMProvider = {
   },
 };
 
+const openApps: FastifyInstance[] = [];
+
+afterEach(async () => {
+  await Promise.all(openApps.splice(0).map((app) => app.close()));
+});
+
+function trackedApp(options: Parameters<typeof createApp>[0]): FastifyInstance {
+  const app = createApp(options);
+  openApps.push(app);
+  return app;
+}
+
 test("createApp supports inject, CORS, analysis, review listing, and idempotent decisions", async () => {
   const logs: unknown[] = [];
-  const app = await createApp({
+  const app = trackedApp({
     provider,
     store: createReviewStore(),
     logger: { info: (entry) => logs.push(entry), error: (entry) => logs.push(entry) },
@@ -77,7 +91,7 @@ test("createApp supports inject, CORS, analysis, review listing, and idempotent 
 });
 
 test("analysis returns PASS and BLOCK responses and deterministic reviews omit suggestions", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
   const passProduct = { ...product, id: "prod_pass", category: "Vendor > Shoes" };
   const blockProduct = { ...product, id: "prod_block", sku: "" };
   const pass = await app.inject({
@@ -111,7 +125,7 @@ test("analysis returns PASS and BLOCK responses and deterministic reviews omit s
 
 test("initial rejection removes pending review and preserves product through the route", async () => {
   const store = createReviewStore();
-  const app = await createApp({ provider, store });
+  const app = trackedApp({ provider, store });
   const before = { ...product };
   await app.inject({ method: "POST", url: "/analyse-product", payload: { product: before } });
 
@@ -130,7 +144,7 @@ test("initial rejection removes pending review and preserves product through the
 });
 
 test("a product ID accepted during analysis remains accepted during decision, including dots", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
   const dottedProduct = { ...product, id: "prod.1" };
 
   const analysis = await app.inject({
@@ -152,7 +166,7 @@ test("a product ID accepted during analysis remains accepted during decision, in
 });
 
 test("invalid analysis and decision requests return sanitized Zod details", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
 
   const invalidAnalysis = await app.inject({
     method: "POST",
@@ -176,7 +190,7 @@ test("invalid analysis and decision requests return sanitized Zod details", asyn
 });
 
 test("unknown decision target is a deliberate domain error", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
 
   const response = await app.inject({
     method: "POST",
@@ -189,7 +203,7 @@ test("unknown decision target is a deliberate domain error", async () => {
 });
 
 test("missing and invalid product IDs return sanitized field-level 400 errors", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
   for (const url of ["/reviews", "/reviews/", "/reviews/not%20valid", "/reviews/bad%2Fid"]) {
     const response = await app.inject({ method: "POST", url, payload: { decision: "approve" } });
     assert.equal(response.statusCode, 400, url);
@@ -200,7 +214,7 @@ test("missing and invalid product IDs return sanitized field-level 400 errors", 
 });
 
 test("a syntactically valid unknown product ID remains a deliberate 404", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
   const response = await app.inject({
     method: "POST",
     url: "/reviews/unknown_product-1",
@@ -211,7 +225,7 @@ test("a syntactically valid unknown product ID remains a deliberate 404", async 
 });
 
 test("missing decision is a field-level validation error", async () => {
-  const app = await createApp({ provider, store: createReviewStore() });
+  const app = trackedApp({ provider, store: createReviewStore() });
   const response = await app.inject({ method: "POST", url: "/reviews/prod_route", payload: {} });
   assert.equal(response.statusCode, 400);
   assert.ok(response.json().details.some((detail: { path: string[] }) => detail.path[0] === "decision"));
@@ -224,7 +238,7 @@ test("provider failures log named safe events without provider details", async (
       throw Object.assign(new Error("api-key secret full response"), { status: 401 });
     },
   };
-  const app = await createApp({
+  const app = trackedApp({
     provider: failingProvider,
     store: createReviewStore(),
     logger: { info: (entry) => logs.push(entry), error: (entry) => logs.push(entry) },
@@ -243,4 +257,78 @@ test("provider failures log named safe events without provider details", async (
     ["llm_category_request", "llm_category_failed", "product_analysis_completed"],
   );
   assert.doesNotMatch(JSON.stringify(logs), /api-key|authorization|full response|secret/i);
+});
+
+test("framework client errors preserve sanitized 4xx statuses", async () => {
+  const app = trackedApp({ provider, store: createReviewStore() });
+  const malformed = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    headers: { "content-type": "application/json" },
+    payload: '{"product":',
+  });
+  assert.equal(malformed.statusCode, 400);
+  assert.deepEqual(malformed.json(), { error: "Invalid request" });
+  assert.doesNotMatch(malformed.body, /Unexpected|JSON|product/);
+
+  const oversized = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    headers: { "content-type": "application/json" },
+    payload: `{"credentials":"${"secret".repeat(200_000)}"}`,
+  });
+  assert.equal(oversized.statusCode, 413);
+  assert.deepEqual(oversized.json(), { error: "Request too large" });
+  assert.doesNotMatch(oversized.body, /secret|body|payload/i);
+});
+
+test("unexpected dependency errors return generic 500 and fixed redacted telemetry", async () => {
+  const logs: unknown[] = [];
+  const baseStore = createReviewStore();
+  const store: ReviewStore = {
+    ...baseStore,
+    recordAnalysis() {
+      throw new Error("provider credentials and full response secret");
+    },
+  };
+  const app = trackedApp({
+    provider,
+    store,
+    logger: { info: (entry) => logs.push(entry), error: (entry) => logs.push(entry) },
+  });
+
+  const response = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    payload: { product },
+  });
+  assert.equal(response.statusCode, 500);
+  assert.deepEqual(response.json(), { error: "Internal server error" });
+  assert.doesNotMatch(response.body, /credentials|full response|secret|stack/i);
+  assert.deepEqual(logs.map((entry) => (entry as { event: string }).event), [
+    "llm_category_request",
+    "unexpected_error",
+  ]);
+});
+
+test("unavailable provider logs failure without a fabricated attempt", async () => {
+  const logs: unknown[] = [];
+  const app = trackedApp({
+    provider: new UnavailableProvider(),
+    store: createReviewStore(),
+    logger: { info: (entry) => logs.push(entry), error: (entry) => logs.push(entry) },
+  });
+  const response = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    payload: { product },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().llm.status, "FAILED");
+  assert.deepEqual(
+    logs.map((entry) => (entry as { event: string }).event),
+    ["llm_category_request", "llm_category_failed", "product_analysis_completed"],
+  );
+  assert.equal("attempt" in (logs[1] as object), false);
 });

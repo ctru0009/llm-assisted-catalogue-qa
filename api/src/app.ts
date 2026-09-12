@@ -27,8 +27,23 @@ export function createApp(options: CreateAppOptions): FastifyInstance {
     reply.header("access-control-allow-headers", "content-type");
   });
   app.options("/*", async (_request, reply) => reply.code(204).send());
-  app.setErrorHandler(async (_error, _request, reply) => {
-    return reply.code(500).send({ error: "Internal server error" });
+  app.setErrorHandler(async (error, _request, reply) => {
+    const reportedStatusCode =
+      typeof error === "object" && error !== null && "statusCode" in error &&
+      typeof error.statusCode === "number"
+        ? error.statusCode
+        : undefined;
+    const statusCode =
+      reportedStatusCode !== undefined && reportedStatusCode >= 400 && reportedStatusCode < 500
+        ? reportedStatusCode
+        : 500;
+
+    if (statusCode === 500) logger.error({ event: "unexpected_error" });
+    return reply.code(statusCode).send({
+      error: statusCode === 413 ? "Request too large" : statusCode === 500
+        ? "Internal server error"
+        : "Invalid request",
+    });
   });
 
   registerAnalyseProductRoute(app, { provider: options.provider, store, logger });

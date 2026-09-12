@@ -11,8 +11,14 @@ import { createReviewStore } from "../api/src/store/review-store";
 import type { Product } from "../api/src/types/product";
 
 type Status = "PASS" | "REVIEW" | "BLOCK";
-type CheckKind = "fixture-mapping" | "fixture-status" | "summary" | "malformed" | "safety";
+type CheckKind = "fixture-mapping" | "fixture-status" | "summary" | "safety";
 type Check = { label: string; kind: CheckKind; passed: boolean; detail?: string };
+type ExpectedFixture = {
+  status: Status;
+  issueCodes: string[];
+  llmStatus: "NOT_USED" | "SUCCESS" | "FAILED";
+  providerCalls: number;
+};
 
 type ShopifyFixture = {
   id: number | string;
@@ -30,22 +36,22 @@ type ShopifyFixture = {
 };
 
 const fixtureDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
-const expectedStatuses: Record<string, Status> = {
-  "01-valid-running-shoe.json": "PASS",
-  "02-valid-shirt.json": "PASS",
-  "03-missing-sku.json": "BLOCK",
-  "04-negative-price.json": "BLOCK",
-  "05-invalid-discount.json": "BLOCK",
-  "06-missing-title.json": "BLOCK",
-  "07-zero-inventory.json": "REVIEW",
-  "08-no-images.json": "REVIEW",
-  "09-missing-description.json": "REVIEW",
-  "10-uncategorised-running-shoe.json": "REVIEW",
-  "11-malformed-llm-response.json": "REVIEW",
-  "12-prompt-injection.json": "REVIEW",
+const expectedFixtures: Record<string, ExpectedFixture> = {
+  "01-valid-running-shoe.json": { status: "PASS", issueCodes: [], llmStatus: "NOT_USED", providerCalls: 0 },
+  "02-valid-shirt.json": { status: "PASS", issueCodes: [], llmStatus: "NOT_USED", providerCalls: 0 },
+  "03-missing-sku.json": { status: "BLOCK", issueCodes: ["MISSING_SKU"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "04-negative-price.json": { status: "BLOCK", issueCodes: ["INVALID_PRICE"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "05-invalid-discount.json": { status: "BLOCK", issueCodes: ["INVALID_DISCOUNT"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "06-missing-title.json": { status: "BLOCK", issueCodes: ["MISSING_TITLE"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "07-zero-inventory.json": { status: "REVIEW", issueCodes: ["ZERO_INVENTORY"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "08-no-images.json": { status: "REVIEW", issueCodes: ["MISSING_IMAGES"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "09-missing-description.json": { status: "REVIEW", issueCodes: ["MISSING_DESCRIPTION"], llmStatus: "NOT_USED", providerCalls: 0 },
+  "10-uncategorised-running-shoe.json": { status: "REVIEW", issueCodes: [], llmStatus: "SUCCESS", providerCalls: 1 },
+  "11-malformed-llm-response.json": { status: "REVIEW", issueCodes: [], llmStatus: "FAILED", providerCalls: 2 },
+  "12-prompt-injection.json": { status: "REVIEW", issueCodes: [], llmStatus: "SUCCESS", providerCalls: 1 },
 };
 
-const evaluationMetrics = { providerCalls: 0, providerErrors: 0, malformedCalls: 0 };
+const evaluationMetrics = { providerCalls: 0, providerErrors: 0 };
 
 function mapShopifyProduct(payload: ShopifyFixture): Product {
   const variant = payload.variants[0];
@@ -96,7 +102,6 @@ function malformedProvider(): LLMProvider {
           async create() {
             evaluationMetrics.providerCalls += 1;
             evaluationMetrics.providerErrors += 1;
-            evaluationMetrics.malformedCalls += 1;
             return { choices: [{ message: { content: "not-json" } }] };
           },
         },
@@ -136,7 +141,6 @@ async function main(): Promise<void> {
   const store = createReviewStore();
   const actualCounts: Record<Status, number> = { PASS: 0, REVIEW: 0, BLOCK: 0 };
   let totalLatencyMs = 0;
-  let malformedHandlingPass = false;
   let fixtureProviderCalls = 0;
 
   for (const name of fixtureNames) {
@@ -159,27 +163,33 @@ async function main(): Promise<void> {
     const provider = name === "11-malformed-llm-response.json"
       ? malformedProvider()
       : deterministicSuggestionProvider(product.category);
+    const callsBefore = evaluationMetrics.providerCalls;
     const started = performance.now();
     const analysis = await analyseProduct(product, provider);
     totalLatencyMs += performance.now() - started;
     store.recordAnalysis(product, analysis);
     actualCounts[analysis.status] += 1;
+    const callsDelta = evaluationMetrics.providerCalls - callsBefore;
+    const expected = expectedFixtures[name];
 
     runCheck(checks, "fixture-status", `${name} status`, () => {
-      assert.equal(analysis.status, expectedStatuses[name]);
+      assert.equal(analysis.status, expected?.status);
     });
-    if (name === "11-malformed-llm-response.json") {
-      malformedHandlingPass = analysis.llm.status === "FAILED" && evaluationMetrics.malformedCalls === 2;
-    }
+    runCheck(checks, "fixture-status", `${name} issue codes`, () => {
+      assert.deepEqual(analysis.issues.map((issue) => issue.code), expected?.issueCodes);
+    });
+    runCheck(checks, "fixture-status", `${name} LLM state`, () => {
+      assert.equal(analysis.llm.status, expected?.llmStatus);
+    });
+    runCheck(checks, "fixture-status", `${name} provider-call delta`, () => {
+      assert.equal(callsDelta, expected?.providerCalls);
+    });
   }
   fixtureProviderCalls = evaluationMetrics.providerCalls;
 
   runCheck(checks, "summary", "fixture count", () => assert.equal(fixtureNames.length, 12));
   runCheck(checks, "summary", "latest-analysis summary", () => {
     assert.deepEqual(store.getSummary(), { PASS: 2, REVIEW: 6, BLOCK: 4 });
-  });
-  runCheck(checks, "malformed", "malformed-output handling", () => {
-    assert.equal(malformedHandlingPass, true);
   });
 
   const injectionProduct = mapShopifyProduct(readFixture("12-prompt-injection.json"));
@@ -222,12 +232,13 @@ async function main(): Promise<void> {
   const failedChecks = checks.filter((check) => !check.passed);
   const fixturePassed = fixtureChecks.filter((check) => check.passed).length;
   const unsafeMutations = safetyChecks.filter((check) => !check.passed).length;
+  const malformedCheck = checks.find((check) => check.label === "11-malformed-llm-response.json LLM state");
 
   console.log("LLM-assisted catalogue QA evaluation");
   console.log(`Fixtures:                    ${fixtureNames.length}`);
   console.log(`Fixture expectations:        ${fixturePassed}/${fixtureChecks.length}`);
   console.log(`Actual outcomes:             PASS ${actualCounts.PASS} / REVIEW ${actualCounts.REVIEW} / BLOCK ${actualCounts.BLOCK}`);
-  console.log(`LLM schema failure handling: ${malformedHandlingPass ? "PASS" : "FAIL"}`);
+  console.log(`LLM schema failure handling: ${malformedCheck?.passed === true ? "PASS" : "FAIL"}`);
   console.log(`Prompt injection isolation:  ${unsafeMutations === 0 ? "PASS" : "FAIL"}`);
   console.log(`Unsafe state mutations:      ${unsafeMutations}`);
   console.log("Publication safety:          architecture property only (publication state is not represented in Product model)");
