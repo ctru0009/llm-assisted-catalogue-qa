@@ -76,6 +76,59 @@ test("createApp supports inject, CORS, analysis, review listing, and idempotent 
   );
 });
 
+test("analysis returns PASS and BLOCK responses and deterministic reviews omit suggestions", async () => {
+  const app = await createApp({ provider, store: createReviewStore() });
+  const passProduct = { ...product, id: "prod_pass", category: "Vendor > Shoes" };
+  const blockProduct = { ...product, id: "prod_block", sku: "" };
+  const pass = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    payload: { product: passProduct },
+  });
+  const block = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    payload: { product: blockProduct },
+  });
+  assert.equal(pass.statusCode, 200);
+  assert.equal(pass.json().status, "PASS");
+  assert.equal(block.statusCode, 200);
+  assert.equal(block.json().status, "BLOCK");
+
+  const deterministic = await app.inject({
+    method: "POST",
+    url: "/analyse-product",
+    payload: { product: { ...product, id: "prod_deterministic", category: "Vendor > Shoes", inventory: 0 } },
+  });
+  assert.equal(deterministic.json().status, "REVIEW");
+  assert.equal("suggestion" in deterministic.json().llm, false);
+  const reviews = await app.inject({ method: "GET", url: "/reviews" });
+  const deterministicItem = reviews.json().items.find(
+    (item: { productId: string }) => item.productId === "prod_deterministic",
+  );
+  assert.equal("suggestedCategory" in deterministicItem, false);
+});
+
+test("initial rejection removes pending review and preserves product through the route", async () => {
+  const store = createReviewStore();
+  const app = await createApp({ provider, store });
+  const before = { ...product };
+  await app.inject({ method: "POST", url: "/analyse-product", payload: { product: before } });
+
+  const rejected = await app.inject({
+    method: "POST",
+    url: "/reviews/prod_route",
+    payload: { decision: "reject" },
+  });
+  assert.deepEqual(rejected.json(), {
+    productId: "prod_route",
+    decision: "reject",
+    status: "REJECTED",
+  });
+  assert.deepEqual(store.getLatestProduct("prod_route"), before);
+  assert.equal((await app.inject({ method: "GET", url: "/reviews" })).json().items.length, 0);
+});
+
 test("invalid analysis and decision requests return sanitized Zod details", async () => {
   const app = await createApp({ provider, store: createReviewStore() });
 
@@ -111,6 +164,35 @@ test("unknown decision target is a deliberate domain error", async () => {
 
   assert.equal(response.statusCode, 404);
   assert.deepEqual(response.json(), { error: "Review not found" });
+});
+
+test("missing and invalid product IDs return sanitized field-level 400 errors", async () => {
+  const app = await createApp({ provider, store: createReviewStore() });
+  for (const url of ["/reviews", "/reviews/", "/reviews/not%20valid", "/reviews/bad%2Fid"]) {
+    const response = await app.inject({ method: "POST", url, payload: { decision: "approve" } });
+    assert.equal(response.statusCode, 400, url);
+    assert.equal(response.json().error, "Invalid request");
+    assert.ok(response.json().details.some((detail: { path: string[] }) => detail.path[0] === "productId"));
+    assert.doesNotMatch(response.body, /not valid|bad\/id/);
+  }
+});
+
+test("a syntactically valid unknown product ID remains a deliberate 404", async () => {
+  const app = await createApp({ provider, store: createReviewStore() });
+  const response = await app.inject({
+    method: "POST",
+    url: "/reviews/unknown_product-1",
+    payload: { decision: "approve" },
+  });
+  assert.equal(response.statusCode, 404);
+  assert.deepEqual(response.json(), { error: "Review not found" });
+});
+
+test("missing decision is a field-level validation error", async () => {
+  const app = await createApp({ provider, store: createReviewStore() });
+  const response = await app.inject({ method: "POST", url: "/reviews/prod_route", payload: {} });
+  assert.equal(response.statusCode, 400);
+  assert.ok(response.json().details.some((detail: { path: string[] }) => detail.path[0] === "decision"));
 });
 
 test("provider failures log named safe events without provider details", async () => {

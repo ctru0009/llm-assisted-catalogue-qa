@@ -49,10 +49,14 @@ for (const key of Object.keys(complete) as Array<keyof typeof complete>) {
 }
 
 for (const key of Object.keys(complete) as Array<keyof typeof complete>) {
-  test(`blank ${key} composes an unavailable provider`, () => {
+  test(`blank ${key} falls to REVIEW/FAILED without transport`, async () => {
     const provider = composeProvider(loadConfig({ ...complete, [key]: " \t" }));
     assert.ok(provider instanceof UnavailableProvider);
     assert.equal(provider instanceof OpenAICompatibleProvider, false);
+    const result = await analyseProduct(weakProduct, provider);
+    assert.equal(result.status, "REVIEW");
+    assert.deepEqual(result.llm, { status: "FAILED" });
+    assert.equal(result.metrics.llmUsed, false);
   });
 }
 

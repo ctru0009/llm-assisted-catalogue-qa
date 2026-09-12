@@ -69,6 +69,50 @@ test("decisions apply only an exact category suggestion and are idempotent", () 
   assert.deepEqual(store.getSummary(), { PASS: 0, REVIEW: 1, BLOCK: 0 });
 });
 
+test("initial rejection preserves the complete externally observable product", () => {
+  const store = createReviewStore();
+  const original = product();
+  store.recordAnalysis(original, reviewAnalysis());
+
+  assert.deepEqual(store.decide("prod_1", "reject"), {
+    productId: "prod_1",
+    decision: "reject",
+    status: "REJECTED",
+  });
+  assert.deepEqual(store.getLatestProduct("prod_1"), original);
+  assert.equal(store.listPendingReviews().length, 0);
+});
+
+test("approval changes exactly category and replaces the latest analysis", () => {
+  const store = createReviewStore();
+  const original = product();
+  const firstAnalysis = reviewAnalysis();
+  store.recordAnalysis(original, firstAnalysis);
+  store.decide("prod_1", "approve");
+
+  const secondProduct = product({ title: "Second Runner", category: "Uncategorised" });
+  const secondAnalysis: ProductAnalysis = {
+    ...reviewAnalysis(),
+    productId: secondProduct.id,
+    issues: [{ code: "MISSING_DESCRIPTION", severity: "medium", message: "Description missing." }],
+  };
+  store.recordAnalysis(secondProduct, secondAnalysis);
+
+  assert.deepEqual(store.getLatestAnalysis("prod_1"), secondAnalysis);
+  assert.deepEqual(store.getLatestProduct("prod_1"), secondProduct);
+  assert.equal(store.getReview("prod_1")?.status, "PENDING");
+  assert.deepEqual(store.decide("prod_1", "approve"), {
+    productId: "prod_1",
+    decision: "approve",
+    status: "APPROVED",
+    appliedCategory: ALLOWED_CATEGORIES[0],
+  });
+  assert.deepEqual(store.getLatestProduct("prod_1"), {
+    ...secondProduct,
+    category: ALLOWED_CATEGORIES[0],
+  });
+});
+
 test("re-analysis replaces the review and resets its decision", () => {
   const store = createReviewStore();
   store.recordAnalysis(product(), reviewAnalysis());

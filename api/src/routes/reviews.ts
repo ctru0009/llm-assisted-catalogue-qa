@@ -4,6 +4,47 @@ import { z } from "zod";
 import type { ReviewStore } from "../store/review-store";
 
 const DecisionSchema = z.object({ decision: z.enum(["approve", "reject"]) });
+const ProductIdSchema = z
+  .string()
+  .min(1, "Product ID is required.")
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "Product ID has an invalid format.");
+
+function validationDetails(error: z.ZodError, field?: string) {
+  return error.issues.map(({ code, message, path }) => ({
+    code,
+    message,
+    path: field === undefined ? path : [field, ...path],
+  }));
+}
+
+async function handleDecision(
+  request: { body: unknown },
+  reply: { code(statusCode: number): { send(payload: unknown): unknown }; send(payload: unknown): unknown },
+  store: ReviewStore,
+  rawProductId: unknown,
+) {
+  const productId = ProductIdSchema.safeParse(rawProductId);
+  if (!productId.success) {
+    return reply.code(400).send({
+      error: "Invalid request",
+      details: validationDetails(productId.error, "productId"),
+    });
+  }
+
+  const parsed = DecisionSchema.safeParse(request.body);
+  if (!parsed.success) {
+    return reply.code(400).send({
+      error: "Invalid request",
+      details: validationDetails(parsed.error),
+    });
+  }
+
+  const result = store.decide(productId.data, parsed.data.decision);
+  if ("kind" in result && result.kind === "NOT_FOUND") {
+    return reply.code(404).send({ error: "Review not found" });
+  }
+  return reply.send(result);
+}
 
 export function registerReviewsRoutes(app: FastifyInstance, store: ReviewStore): void {
   app.get("/reviews", async (_request, reply) => {
@@ -23,20 +64,11 @@ export function registerReviewsRoutes(app: FastifyInstance, store: ReviewStore):
     return reply.send({ summary: store.getSummary(), items });
   });
 
+  app.post("/reviews", async (request, reply) =>
+    handleDecision(request, reply, store, undefined),
+  );
   app.post("/reviews/:productId", async (request, reply) => {
-    const parsed = DecisionSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.code(400).send({
-        error: "Invalid request",
-        details: parsed.error.issues.map(({ code, message, path }) => ({ code, message, path })),
-      });
-    }
-
     const params = request.params as { productId: string };
-    const result = store.decide(params.productId, parsed.data.decision);
-    if ("kind" in result && result.kind === "NOT_FOUND") {
-      return reply.code(404).send({ error: "Review not found" });
-    }
-    return reply.send(result);
+    return handleDecision(request, reply, store, params.productId);
   });
 }
