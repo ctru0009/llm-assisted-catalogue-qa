@@ -1,113 +1,106 @@
-# LLM-assisted Catalogue QA
+# LLM-assisted catalogue QA
 
-AI-assisted catalogue QA for Shopify-shaped product events. Deterministic TypeScript rules validate consequential fields first; an OpenAI-compatible LLM is used only for weak category classification; validated suggestions go to a human review queue.
+An n8n-orchestrated catalogue QA workflow that separates deterministic product validation from bounded LLM classification and routes every model suggestion through human review. Synthetic, hiring-focused commerce workflow: rules protect consequential fields, the model only interprets ambiguous taxonomy, and a person approves what moves forward.
 
-## Current implementation status
+![Catalogue review dashboard](evidence/web-review-dashboard.png)
 
-The API, React review UI, fixtures, deterministic evaluation, n8n export, and n8n helper scripts are present, and the root package wires `build`, `test`, `eval`, `validate:n8n`, and `demo`. The live webhook demo still requires a running n8n instance and API.
+*Live local run: 12 synthetic Shopify-shaped products analysed — PASS 2, REVIEW 6, BLOCK 4 — with 6 decisions waiting in the human review queue.*
 
-## Prerequisites
+## Why this exists
 
-- Node.js `^20.19.0 || >=22.12.0` (or any Node `>=22.12.0`), as declared by the root package.
-- npm with workspace support.
-- n8n `1.107.4` is the pinned version in `n8n/catalogue-qa-workflow.json` and must be used for the workflow smoke test.
-- A real OpenAI-compatible LLM endpoint is needed only for a real-model demo; evaluation does not need network access or credentials.
+Catalogue data fails in two different ways. Some defects are deterministic: a missing title, a negative price, a compare-at price below the sale price. Others are genuinely ambiguous: a supplier taxonomy value such as `Other` that needs interpretation. Sending deterministic defects to a language model wastes money, adds latency, and makes outcomes nondeterministic; asking rules to guess taxonomy produces false confidence. This project demonstrates one boundary between the two: deterministic validation runs first and decides what the model is even allowed to see, and model output stays advisory until a human approves it.
 
-## Install and workspace commands
+## Design principle
 
-```bash
-npm install
-npm test                    # API and web tests
-npm run build               # API TypeScript build and web production build
-npm run eval                # 12-fixture evaluation; injected providers only
-npm -w api test             # API tests only
-npm -w web test             # web typecheck and behavioral tests only
+> **LLMs interpret. Deterministic software acts.**
+
+- Rules run before the LLM and own every blocking decision.
+- Any critical or high issue blocks: the LLM is skipped entirely, and all deterministic issues are still reported.
+- The model answers exactly one narrow question: classify a missing or weak category.
+- Every validated suggestion routes to REVIEW. Nothing is auto-applied.
+- Provider failure degrades to REVIEW with `llm.status = FAILED`; it cannot corrupt product state.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Shopify-shaped fixture] --> B[n8n: map to internal Product]
+    B --> C[Fastify API: POST /analyse-product]
+    C --> D[Deterministic catalogue rules]
+    D -->|critical or high issue| E[BLOCK - LLM skipped]
+    D -->|medium warnings| F[REVIEW - human queue]
+    D -->|clean, weak category| G[LLM category suggestion]
+    D -->|clean, strong category| H[PASS - LLM not used]
+    G --> I[JSON parse, allow-list, Zod]
+    I -->|valid suggestion| F
+    I -->|invalid or provider failed| F
 ```
 
-The root package exposes `build`, `test`, `eval`, `validate:n8n`, and `demo`. It does not expose a `dev` script; run the API and Vite directly as shown below.
+![n8n workflow canvas](evidence/n8n-workflow-canvas.png)
 
-## Run the API and web UI locally
+*The imported workflow in n8n 1.107.4: webhook → payload mapping → API call → status switch → labelled no-op outcome branches.*
 
-Copy the example as a reference and export its values in each terminal. The application does not load `.env` automatically (there is no dotenv dependency).
+n8n owns orchestration and mapping; the TypeScript API owns analysis and review state:
 
-```bash
-cp .env.example .env
-set -a; source .env; set +a
-```
+- **Shopify Product Webhook** receives a Shopify-shaped POST body (synthetic fixtures in this MVP).
+- **Map Shopify payload to internal product** converts it into the internal `Product` contract: first variant for SKU, price, compare-at price, and inventory; `body_html` → description; image `src` values → images.
+- **POST local API /analyse-product** calls the Fastify API. In the Docker-based local run the node targets `http://host.docker.internal:3000` so the container can reach the host; the exported JSON uses `http://127.0.0.1:3000`.
+- **Route by analysis status** switches on the returned `status` (PASS / REVIEW / BLOCK).
+- **Outcome … (no-op)** Set nodes terminate each branch with a labelled outcome. The MVP deliberately sends no notifications and performs no external writes.
 
-In one terminal, run the API on `http://localhost:3000`:
+## What the three outcomes mean
 
-```bash
-npm -w api exec -- tsx src/server.ts
-```
+### PASS — clean, and the model is never called
 
-In another terminal, run Vite on `http://localhost:5173`:
+Rules found no issue, and the category is strong enough that classification is unnecessary.
 
-```bash
-npm -w web exec -- vite --host localhost
-```
+![PASS execution](evidence/n8n-execution-pass.png)
 
-`VITE_API_URL` is read by Vite at dev/build time. The API exposes:
+*Fixture 01 (Northline Runner Pro): mapped input on the left, API output on the right — `status: PASS`, empty issue list, `llm.status: NOT_USED`.*
 
-- `POST /analyse-product` with an internal `{ "product": ... }` envelope;
-- `GET /reviews` for the latest summary and pending queue;
-- `POST /reviews/:productId` with `{ "decision": "approve" | "reject" }`.
+### REVIEW — a human decision is required
 
-## n8n workflow
+REVIEW is the destination for deterministic warnings (zero inventory, missing images, missing description), for provider failure, and for every validated model suggestion.
 
-Start the pinned local version:
+![REVIEW execution](evidence/n8n-execution-review.png)
 
-```bash
-npx n8n@1.107.4 start
-```
+*Fixture 12 (Runner Pro), whose description carries an intentional prompt-injection string. This local demo ran without LLM credentials, so the unavailable provider degraded safely: `status: REVIEW`, `llm.status: FAILED`, no state change. This demonstrates provider-unavailable fallback, not successful classification; with a configured provider the same weak-category path would attach a validated suggestion and still route to REVIEW.*
 
-Open `http://localhost:5678`, import `n8n/catalogue-qa-workflow.json`, and activate the workflow (or use **Listen for test event** while testing). The imported Webhook path is `catalogue-qa`, so the production URL is normally `http://127.0.0.1:5678/webhook/catalogue-qa` and the test URL is normally `http://127.0.0.1:5678/webhook-test/catalogue-qa`. Copy the complete URL shown by n8n into `N8N_WEBHOOK_URL`; use the matching `/webhook-test/...` or `/webhook/...` URL and relink it whenever the workflow path, host, or mode changes.
+### BLOCK — deterministic stop, model skipped
 
-The flow is:
+Any critical or high issue blocks before the LLM is considered, and all deterministic issues are still reported.
+
+![BLOCK execution](evidence/n8n-execution-block.png)
+
+*Fixture 06, empty title: `status: BLOCK` with `MISSING_TITLE` (critical). Blocking happens before any model call.*
+
+## Human review
+
+![Pending review queue](evidence/web-review-queue.png)
+
+- Every REVIEW product enters one queue; `GET /reviews` returns `{ summary, items }`, and the summary counts latest unique-product analysis outcomes.
+- Deterministic-only approval is an acknowledgement: no product fields change.
+- A category suggestion can only be approved exactly as suggested or rejected; rejection leaves the product unchanged.
+- Deciding an item removes it from pending but retains the decision in memory; duplicate decisions are idempotent.
+- Re-analysing a product replaces its previous state and resets the review: the latest analysis wins.
+
+## LLM boundary
+
+The only model call in the system is one category suggestion, behind an OpenAI-compatible adapter configured by `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`:
+
+- JSON-object response mode; the reply is `JSON.parse`d, checked against an 8-category allow-list, then Zod-validated.
+- SDK retries are disabled; at most one explicit retry happens for retryable failures (timeout, rate limit, 5xx, connection). Authentication and client errors are not retried.
+- Configuration is optional. If any of the three fields is blank, an explicit unavailable provider is selected — no transport attempt, no mock substitution — and weak-category products become REVIEW with `llm.status = FAILED`.
+- The model has no mutation tools and cannot change price, inventory, SKU, images, or publication state. Product fields are passed as untrusted data, and non-schema output fields are discarded by validation.
+- Provider errors are not exposed through the API.
+
+The adapter targets the OpenAI-compatible chat-completions surface; "OpenAI-compatible" providers vary, so no provider behaviour beyond a configured endpoint is asserted here.
+
+## Evaluation
+
+`npm run eval` injects deterministic and malformed mocked providers into the real analysis and store boundary. It never calls a live model.
 
 ```text
-Shopify-shaped webhook → explicit first-variant/product mapping → POST /analyse-product → PASS/REVIEW/BLOCK switch → labelled Set/no-op terminal
-```
-
-n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The workflow uses the fixed local API URL `http://127.0.0.1:3000/analyse-product`; if the local network topology differs, align the workflow separately. The npm commands are:
-
-```bash
-npm run validate:n8n   # parse the export and verify nodes/branches
-npm run demo           # send all 12 fixtures through the live webhook
-```
-
-`npm run demo` requires `N8N_WEBHOOK_URL`; without it the script fails early with instructions. Structural validation proves the JSON shape only; the demo must run with both n8n and the API live and asserts statuses, issue codes, terminal labels, and mapping-sensitive fields.
-
-## Environment
-
-See `.env.example` for safe, blank-by-default values.
-
-| Variable | Owner | Required | Behavior |
-|---|---|---:|---|
-| `PORT` | API | No | Defaults to `3000`. |
-| `CORS_ORIGIN` | API | No | Defaults to `http://localhost:5173`. |
-| `VITE_API_URL` | Web | No | Defaults to `http://localhost:3000`; read by Vite at startup/build time. |
-| `N8N_WEBHOOK_URL` | Demo script | For demo | Must be the imported workflow's test/production webhook URL; the demo fails clearly if absent. |
-| `LLM_API_KEY` | API | No | Together with the other two LLM fields, selects the provider. |
-| `LLM_BASE_URL` | API | No | OpenAI-compatible base URL; any blank LLM field makes the provider unavailable. |
-| `LLM_MODEL` | API | No | Model name; any blank LLM field makes the provider unavailable. |
-| `SHOPIFY_STORE_URL` | Stretch only | No | Unused by this MVP. |
-| `SHOPIFY_ACCESS_TOKEN` | Stretch only | No | Unused by this MVP. |
-
-All three LLM fields must be non-blank to configure the live provider. If any is missing or blank, startup still succeeds and selects an explicit unavailable provider: weak-category products become `REVIEW` with `llm.status = FAILED`, with no transport attempt and no mock substitution. Products that do not need classification do not call the provider and report `llm.status = NOT_USED`.
-
-For a configured provider, the adapter uses JSON-object mode, explicitly parses and Zod-validates the response, checks the category against the allow-list, disables SDK retries, and permits at most one retry for retryable failures. Provider details are not exposed through the API.
-
-## Evaluation and real-model demo
-
-`npm run eval` injects deterministic and malformed test providers into the real analysis/store boundary. It never calls a live model. `npm run demo` is different: after n8n/API setup, configure all three LLM fields with a real endpoint and send the fixtures through the webhook. Record at least one real configured-LLM example separately; do not use or describe evaluation mocks as production behavior.
-
-Verified evaluation output from the current checkout:
-
-```text
-> eval
-> tsx scripts/eval.ts
-
 LLM-assisted catalogue QA evaluation
 Fixtures:                    12
 Fixture expectations:        60/60
@@ -116,32 +109,92 @@ LLM schema failure handling: PASS
 Prompt injection isolation:  PASS
 Unsafe state mutations:      0
 Publication safety:          architecture property only (publication state is not represented in Product model)
-Average fixture latency:      0.07 ms   # varies per run
+Average fixture latency:      0.12 ms
 Fixture provider calls:       4
 All-scenario provider calls:  5
 Provider errors:               2
 Checks:                       65/65
 ```
 
-The evaluation also verifies malformed-model-output handling and that hostile extra model fields do not mutate protected product state. Publication safety is an architecture property: publication state is not represented in the `Product` model.
+- 65/65 checks: 60 fixture expectations plus summary and safety assertions.
+- The 12 fixtures resolve to PASS 2 / REVIEW 6 / BLOCK 4.
+- Unsafe state mutations: 0 — including malformed model output, prompt-injection isolation on approve and reject, and deterministic-only approval isolation.
+- `Provider errors: 2` is expected: the malformed-response fixture exhausts its one retry.
+- Mocked providers keep the evaluation deterministic and free; live provider behaviour is demonstrated separately when credentials are configured.
 
-## State and safety boundaries
+## End-to-end n8n proof
 
-State is process-local and in memory. The store retains the latest product, latest analysis, and review record per product ID. Restarting the API clears all of it. Re-analysis replaces the prior analysis and resets the review decision. `REVIEW` items, including deterministic-only warnings, enter the pending queue; deciding one removes it from pending but retains it in memory. Approval applies only the exact validated category suggestion; deterministic-only approval and rejection do not change product fields. Summary counts describe latest analysis outcomes, not decisions.
+![n8n execution history](evidence/n8n-executions.png)
 
-Shopify is simulated at the boundary with fictional Shopify-shaped fixtures. The expected mapping takes SKU, price, compare-at price, and inventory from the first variant, description from `body_html`, and image URLs from image `src` values. Approval updates category only in memory. Real Shopify webhooks, authentication/authorization, database persistence, write-back, notifications, and publication changes are non-goals for this MVP.
+- All 12 fixtures were sent through the real local n8n webhook (`npm run demo`) against n8n 1.107.4 and the live API; every execution succeeded.
+- Outcomes matched 2 PASS / 6 REVIEW / 4 BLOCK.
+- `npm run demo` asserts statuses, issue codes, terminal outcome labels, and mapping-sensitive fields — not just an HTTP 200.
+- `npm run validate:n8n` verifies the export structurally. This is a local MVP run, not a production deployment.
 
-## Screenshots and video evidence
+## Safety cases
 
-Captured from a real local run: n8n `1.107.4` (Docker), the API, and the web UI, after `npm run demo` sent all 12 fixtures through the webhook.
+- Malformed LLM output → REVIEW (after at most one retry).
+- Category outside the allow-list → one retry, then REVIEW.
+- Provider unavailable → REVIEW with `llm.status = FAILED`; no state change.
+- Deterministic BLOCK skips the LLM entirely.
+- The prompt-injection fixture cannot mutate protected fields: the model has no mutation tools, and non-schema output is discarded.
 
-| Artifact | What it shows |
-|---|---|
-| `evidence/n8n-executions.png` | n8n executions list: every fixture run succeeded. |
-| `evidence/n8n-workflow-canvas.png` | The imported workflow: Webhook → Shopify mapper → POST local API → status Switch → labelled PASS/REVIEW/BLOCK terminals. |
-| `evidence/n8n-execution-pass.png` | Fixture 01 (`1000000001`) node output: `status: PASS`, `llm.status: NOT_USED`. |
-| `evidence/n8n-execution-review.png` | Fixture 12 (`1000000012`) node output: `status: REVIEW`, `llm.status: FAILED`; the hostile `body_html` did not affect the result. |
-| `evidence/n8n-execution-block.png` | Fixture 06 (`1000000006`) node output: `status: BLOCK` with `MISSING_TITLE`. |
-| `evidence/web-review-dashboard.png` | Review UI: 12 products analysed, PASS 2 / REVIEW 6 / BLOCK 4, 6 pending decisions. |
+## Running locally
 
-The run used the unavailable provider (no LLM configuration), so weak-category fixtures resolved to `REVIEW` with `llm.status = FAILED`; routing is identical with a configured provider.
+Requires Node `^20.19.0 || >=22.12.0` and npm with workspace support.
+
+```bash
+npm install
+npm test          # 74 API + 9 web tests
+npm run build     # API TypeScript build and web production build
+npm run eval      # offline 12-fixture evaluation, mocked providers
+```
+
+Start the three services:
+
+```bash
+# 1. API → http://localhost:3000
+cp .env.example .env          # optional; defaults are safe
+set -a; source .env; set +a   # no dotenv: export values in the terminal
+npm -w api exec -- tsx src/server.ts
+
+# 2. Review UI → http://localhost:5173
+npm -w web exec -- vite --host localhost
+
+# 3. n8n 1.107.4 → http://localhost:5678
+npx n8n@1.107.4 start
+```
+
+Import `n8n/catalogue-qa-workflow.json`, activate the workflow, then run the end-to-end demo. The webhook path is `catalogue-qa`, so the test URL is normally `http://127.0.0.1:5678/webhook-test/catalogue-qa` and the production URL `http://127.0.0.1:5678/webhook/catalogue-qa`.
+
+```bash
+N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/catalogue-qa npm run demo
+npm run validate:n8n
+```
+
+If n8n runs in Docker, point the HTTP node at `http://host.docker.internal:3000/analyse-product` so the container reaches the host API.
+
+| Variable | Owner | Notes |
+|---|---|---|
+| `PORT` | API | Defaults to `3000`. |
+| `CORS_ORIGIN` | API | Defaults to `http://localhost:5173`. |
+| `VITE_API_URL` | Web | Defaults to `http://localhost:3000`; read at Vite startup/build. |
+| `N8N_WEBHOOK_URL` | Demo | Required by `npm run demo`. |
+| `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | API | All three together; any blank field selects the unavailable provider. |
+
+## Deliberately out of scope
+
+No authentication, database, queues, real Shopify integration, RAG, autonomous agents, multi-provider routing, production monitoring, or hosting. State is process-local and in memory; restarting the API clears it, and the fixtures are synthetic. The scope is deliberate for an 8–12 hour hiring MVP: the point is the boundary and the engineering restraint, not platform breadth.
+
+## Repository map
+
+```text
+api/        Fastify API — deterministic rules, LLM adapter, in-memory review store
+web/        React review UI (Vite)
+n8n/        Importable workflow export pinned to n8n 1.107.4
+fixtures/   12 synthetic Shopify-shaped product payloads
+scripts/    eval, demo, and n8n validation scripts
+evidence/   Screenshots captured from a real local run (synthetic data only)
+```
+
+*Every screenshot, evaluation number, and execution in this README comes from a real local run against synthetic fixtures.*
