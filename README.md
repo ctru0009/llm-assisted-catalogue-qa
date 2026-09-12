@@ -4,7 +4,7 @@ AI-assisted catalogue QA for Shopify-shaped product events. Deterministic TypeSc
 
 ## Current implementation status
 
-The API, React review UI, fixtures, deterministic evaluation, n8n export, and n8n helper scripts are present. The root package has not yet wired `demo` or `validate:n8n` npm scripts, so those two npm commands below are intended integration commands; the underlying scripts can currently be run directly with `npx tsx`.
+The API, React review UI, fixtures, deterministic evaluation, n8n export, and n8n helper scripts are present, and the root package wires `build`, `test`, `eval`, `validate:n8n`, and `demo`. The live webhook demo still requires a running n8n instance and API.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ npm -w api test             # API tests only
 npm -w web test             # web typecheck and behavioral tests only
 ```
 
-The root package currently exposes `build`, `test`, and `eval` only. It does not currently expose `dev`, `demo`, or `validate:n8n` scripts.
+The root package exposes `build`, `test`, `eval`, `validate:n8n`, and `demo`. It does not expose a `dev` script; run the API and Vite directly as shown below.
 
 ## Run the API and web UI locally
 
@@ -53,7 +53,7 @@ npm -w web exec -- vite --host localhost
 - `GET /reviews` for the latest summary and pending queue;
 - `POST /reviews/:productId` with `{ "decision": "approve" | "reject" }`.
 
-## n8n workflow (intended Wave 2 integration)
+## n8n workflow
 
 Start the pinned local version:
 
@@ -63,20 +63,20 @@ npx n8n@1.107.4 start
 
 Open `http://localhost:5678`, import `n8n/catalogue-qa-workflow.json`, and activate the workflow (or use **Listen for test event** while testing). The imported Webhook path is `catalogue-qa`, so the production URL is normally `http://127.0.0.1:5678/webhook/catalogue-qa` and the test URL is normally `http://127.0.0.1:5678/webhook-test/catalogue-qa`. Copy the complete URL shown by n8n into `N8N_WEBHOOK_URL`; use the matching `/webhook-test/...` or `/webhook/...` URL and relink it whenever the workflow path, host, or mode changes.
 
-The intended flow is:
+The flow is:
 
 ```text
 Shopify-shaped webhook → explicit first-variant/product mapping → POST /analyse-product → PASS/REVIEW/BLOCK switch → labelled Set/no-op terminal
 ```
 
-n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The workflow uses the fixed local API URL `http://127.0.0.1:3000/analyse-product`; if the local network topology differs, align the workflow separately. The intended npm commands are:
+n8n owns orchestration and mapping. The TypeScript API owns validation, analysis, and review state. The workflow uses the fixed local API URL `http://127.0.0.1:3000/analyse-product`; if the local network topology differs, align the workflow separately. The npm commands are:
 
 ```bash
-npm run validate:n8n   # intended root-script wiring: parse export and verify nodes/branches
-npm run demo           # intended root-script wiring: send all 12 fixtures through the live webhook
+npm run validate:n8n   # parse the export and verify nodes/branches
+npm run demo           # send all 12 fixtures through the live webhook
 ```
 
-Until root script wiring lands, use `npx tsx scripts/validate-n8n.ts` for structural validation and `N8N_WEBHOOK_URL=... npx tsx scripts/demo.ts` for the live smoke. Structural validation proves the JSON shape only; the demo must run with both n8n and the API live and assert statuses, issue codes, terminal labels, and mapping-sensitive fields.
+`npm run demo` requires `N8N_WEBHOOK_URL`; without it the script fails early with instructions. Structural validation proves the JSON shape only; the demo must run with both n8n and the API live and asserts statuses, issue codes, terminal labels, and mapping-sensitive fields.
 
 ## Environment
 
@@ -87,7 +87,7 @@ See `.env.example` for safe, blank-by-default values.
 | `PORT` | API | No | Defaults to `3000`. |
 | `CORS_ORIGIN` | API | No | Defaults to `http://localhost:5173`. |
 | `VITE_API_URL` | Web | No | Defaults to `http://localhost:3000`; read by Vite at startup/build time. |
-| `N8N_WEBHOOK_URL` | Intended demo script | For demo | Must be the imported workflow's test/production webhook URL; the intended demo should fail clearly if absent. |
+| `N8N_WEBHOOK_URL` | Demo script | For demo | Must be the imported workflow's test/production webhook URL; the demo fails clearly if absent. |
 | `LLM_API_KEY` | API | No | Together with the other two LLM fields, selects the provider. |
 | `LLM_BASE_URL` | API | No | OpenAI-compatible base URL; any blank LLM field makes the provider unavailable. |
 | `LLM_MODEL` | API | No | Model name; any blank LLM field makes the provider unavailable. |
@@ -100,7 +100,7 @@ For a configured provider, the adapter uses JSON-object mode, explicitly parses 
 
 ## Evaluation and real-model demo
 
-`npm run eval` injects deterministic and malformed test providers into the real analysis/store boundary. It never calls a live model. The intended `npm run demo` is different: after n8n/API setup, configure all three LLM fields with a real endpoint and send the fixtures through the webhook. Record at least one real configured-LLM example separately; do not use or describe evaluation mocks as production behavior.
+`npm run eval` injects deterministic and malformed test providers into the real analysis/store boundary. It never calls a live model. `npm run demo` is different: after n8n/API setup, configure all three LLM fields with a real endpoint and send the fixtures through the webhook. Record at least one real configured-LLM example separately; do not use or describe evaluation mocks as production behavior.
 
 Verified evaluation output from the current checkout:
 
@@ -116,7 +116,7 @@ LLM schema failure handling: PASS
 Prompt injection isolation:  PASS
 Unsafe state mutations:      0
 Publication safety:          architecture property only (publication state is not represented in Product model)
-Average fixture latency:      0.07 ms
+Average fixture latency:      0.07 ms   # varies per run
 Fixture provider calls:       4
 All-scenario provider calls:  5
 Provider errors:               2
