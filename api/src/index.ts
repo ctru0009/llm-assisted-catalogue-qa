@@ -1,4 +1,15 @@
 export { loadConfig } from "./config";
+export { composeProvider } from "./composition";
+export { createApp } from "./app";
+export { createReviewStore } from "./store/review-store";
+export type {
+  CreateAppOptions,
+} from "./app";
+export type {
+  DecisionResult,
+  ReviewStore,
+  ReviewSummary,
+} from "./store/review-store";
 export type {
   AppConfig,
   LLMConfiguration,
