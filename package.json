@@ -11,6 +11,8 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "validate:n8n": "tsx scripts/validate-n8n.ts",
+    "demo": "tsx scripts/demo.ts"
   }
 }
